@@ -1,0 +1,35 @@
+% #############################################################################
+% This is Chapter 8
+% !TEX root = ../main.tex
+% #############################################################################
+\fancychapter{Conclusion}
+% The following line allows to ref this chapter
+\label{chap:conclusion}
+
+Agentic applications blur the line between the data a model reads and the instructions it follows, and a growing body of work shows how attackers exploit this. This thesis asked how often the conditions for such attacks are present in real applications. This chapter summarizes the answers to the four research questions and outlines directions for future work.
+
+% #############################################################################
+\section{Conclusions}
+
+We built RADAR, a dataset of 516 open-source agentic applications, and measured their structure and data flows with two static analyses: a pattern-based analysis of their agents, tools, stores, and delegation, and a data-flow analysis that traces the inputs of models, tools, and stores back to their sources.
+
+\textbf{RQ1} Open-source agentic applications mostly call models directly through vendor SDKs and increasingly use MCP to expose or consume tools. Of the applications analysed for data flows, 67.5\% pass data to a model, 43.5\% define tools, and 15.6\% use a vector store or agent memory, and in about a quarter the output of one model call feeds another.
+
+\textbf{RQ2} Developers largely keep instructions under their control---80.6\% of instruction values are constants---but model calls, tools, and stores receive run-time data from users, third parties, and databases. External content enters applications above all through tools.
+
+\textbf{RQ3} The preconditions for known attacks are common. Indirect content reaches a model call in 28.2\% of the applications that call a model, untrusted or indirect content reaches instructions in 13.3\% of the applications with model inputs, and 16.4\% of the applications with tools combine tools that return outside content with tools that can execute commands or access files. Complete memory-poisoning chains are observable in only 5.1\% of the applications with stores, a lower bound limited by stores that are filled outside the repository.
+
+\textbf{RQ4} Static analysis can measure these properties at scale with known limits. Model-call detection reaches a recall of 57\% with confirmed rules and 81\% including heuristic detections. On a random sample of 86 findings from 20 repositories not used during development, 88\% of the reported sinks are real inputs of a model, tool, or store, and the reported sources are fully correct for 49\% of them and at least partially correct for 84\%: the errors are mostly omissions rather than false information. Values reported as static or dynamic are reliable, whereas almost all values reported as undetermined (30 of 33) have an origin that a reader can find in the code but the analysis cannot follow---through runtime selection of providers or agents, framework state, helper functions, or encoding steps. The figures reported for RQ2 and RQ3 are therefore lower bounds, and every result records the code that produced it.
+
+\paragraph{Completeness of traces.} A large share of inputs remains undetermined: 50.7\% of model-call inputs, 51.4\% of store writes, and 74.9\% of store queries (Table~\ref{tab:res-sinks}). This follows from the design of the analysis, which reports a value as undetermined instead of guessing its origin. The recorded reasons show where traces stop. For model calls, 37.4\% of the stopping points are parameters of functions without a caller in the repository, because they are invoked by a framework or messaging platform or reached through a provider or agent selected at run time; 30.5\% are calls into libraries or frameworks whose behaviour the analysis does not model, such as SDK clients, provider objects, and encoding functions; and 25.1\% are values built across more than five function boundaries. Tool results stop most often at unmodelled calls (50.4\%), reflecting that tools obtain their content from external services and libraries. Instructions stop mostly at parameters without a caller (42.6\%), since frameworks receive them from configuration and factory code, and 30.1\% of the stopping points of store reads are stores without a write in the repository, because stores are often filled by separate ingestion processes. The precision review confirms that these values are not unknowable: for 30 of the 33 undetermined values in the sample, a reader could establish the origin from the code, and it was predominantly user input, external content, or model output. Undetermined values therefore do not indicate that inputs are fixed or safe; the dynamic shares and risk-pattern counts are lower bounds.
+
+% #############################################################################
+\section{System Limitations and Future Work}
+
+\paragraph{Defenses.} This thesis measures exposure only: measuring defenses as well would have required a detector and a validation for each defense of Chapter~\ref{chap:back}, which was not possible within the time available. A natural next step is to measure the adoption of the defenses reviewed in Chapter~\ref{chap:back}---input and output guardrails, confirmation before sensitive actions, sandboxed execution, and information-flow control---and to ask whether applications with more dangerous capabilities adopt more of them.
+
+\paragraph{Deeper analysis.} The most valuable extension is to follow the calls a tool makes into the application's own helper functions when searching for effects, as the backward tracing already does for return values; this would capture commands, file accesses, and requests to external services performed on a tool's behalf, which are currently missed. Resolving objects selected at run time from registries, following database writes, state managed by frameworks and user interfaces, and stores shared across services would turn further lower bounds into tighter estimates.
+
+\paragraph{Dynamic validation and benchmarks.} The findings identify concrete code locations where attacks are possible. Confirming a sample of them dynamically, by executing the applications against injected content, would measure how often exposure leads to a successful attack, and the annotated findings could seed a benchmark for vulnerability-detection tools and defenses.
+
+\paragraph{Broader scope.} Extending the study to other languages, to less popular projects, and to repeated snapshots over time would show whether the patterns observed here hold beyond popular Python and JavaScript/TypeScript applications, and how they evolve as frameworks mature.

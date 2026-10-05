@@ -1,0 +1,566 @@
+% #############################################################################
+% This is Chapter 4
+% !TEX root = ../main.tex
+% #############################################################################
+% Change the Name of the Chapter i the following line
+\fancychapter{Application Metadata}
+% The following line allows to ref this chapter
+\label{chap:implement}
+
+% \usepackage[hyphens]{url}
+
+
+\section{Application Metadata Schema}
+\label{sec:metadata-format}
+
+We extract a structured metadata record for each application that captures both its architecture and the design decisions that bear on security. We group the fields into four categories---structure, memory and retrieval, tool access and privilege, and input/output handling---and summarize them in Table~\ref{tab:schema}, together with the analysis that measures each field. Fields that describe the \emph{structure} of an application are extracted by the pattern-based analysis described in this chapter; fields that describe how data \emph{flows} between sources and AI components are measured by the data-flow analysis of Chapter~\ref{sec:toolkit}, which follows values across functions and files rather than matching single call sites. The paragraphs below explain what each category captures and why it is security-relevant.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.15}
+\caption{Application metadata fields, the risks they bear on (Section~\ref{sec:surface}), and the analysis that measures them.}
+\label{tab:schema}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.36\textwidth}>{\raggedright\arraybackslash}p{0.10\textwidth}>{\raggedright\arraybackslash}p{0.16\textwidth}@{}}
+\toprule
+\textbf{Field} & \textbf{Captures} & \textbf{Risks} & \textbf{Measured by} \\
+\midrule
+\multicolumn{4}{@{}l}{\emph{Structure}} \\
+\texttt{n\_agents}, \texttt{n\_tools} & agent instances; tools bound to agents & R1 & pattern analysis \\
+\texttt{has\_rag}, \texttt{has\_agent\_handoffs} & retrieval; delegation between agents & R1, R3 & pattern analysis \\
+\addlinespace[3pt]
+\multicolumn{4}{@{}l}{\emph{Memory and retrieval}} \\
+\texttt{shared\_across\_agents} & one store used by $\ge 2$ agents & R3 & pattern analysis \\
+\texttt{rag\_writers}, \texttt{rag\_readers} & agents writing to / reading from a store & R3, R6 & pattern analysis \\
+\texttt{unsanitized\_writes} & untrusted content written to a store & R3, R6 & pattern analysis (one hop); data-flow analysis \\
+retrieved content steering actions & store reads reaching model calls or tools & R2, R3 & data-flow analysis \\
+\addlinespace[3pt]
+\multicolumn{4}{@{}l}{\emph{Tool access and privilege}} \\
+tool effects & model-controlled command, file, network, database operations inside tools & R1, R6 & data-flow analysis \\
+\addlinespace[3pt]
+\multicolumn{4}{@{}l}{\emph{Input and output handling}} \\
+input sources & user, external, database and configuration data reaching AI components & R1, R2 & data-flow analysis \\
+\addlinespace[3pt]
+\multicolumn{4}{@{}l}{\emph{Context}} \\
+topic & application domain (LLM-classified) & --- & README classification \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Structure}
+
+Structural fields establish the scale of the system: the number of distinct agent instances or roles (\texttt{n\_agents}) and of tool or function definitions available to them (\texttt{n\_tools}), and whether the system uses retrieval-augmented generation (\texttt{has\_rag}) or permits one agent to delegate to another (\texttt{has\_agent\_handoffs}). Handoffs and shared retrieval are of particular interest because they create paths along which a compromise of one component can propagate to others (R1, R3).
+ 
+
+\subsection{Memory and Retrieval}
+
+Because shared memory and retrieval are a primary vehicle for persistent, cross-agent contamination, we record these patterns in detail. \texttt{shared\_across\_agents} indicates whether a single vector store, index, or memory is used by more than one agent---the prerequisite for cross-agent poisoning. \texttt{rag\_writers} and \texttt{rag\_readers} enumerate the agents that write to and read from that store, i.e.\ the potential contamination sources and victims. \texttt{unsanitized\_writes} flags writes of untrusted content that occur without validation or schema enforcement, which make poisoning easy to exploit. Whether retrieved content can steer agent behavior---reaching a model call or a tool rather than only the returned response---is measured by the data-flow analysis (Chapter~\ref{sec:toolkit}); behavioral poisoning is substantially more dangerous than output-only poisoning.
+ 
+
+\subsection{Tool Access and Privilege}
+
+Tools are how an agent acts on its environment. Beyond counting them (\texttt{n\_tools}), what matters for security is what a tool can \emph{do} with input chosen by the model: run a command, read or write a file, send a network request, or query a database. Because this depends on how a tool's parameters flow into such operations, it is measured by the data-flow analysis, which records every \emph{effect} of this kind whose argument is controlled by the model (Chapter~\ref{sec:toolkit}). Properties that cannot be decided from the code alone, such as whether a tool acts under a user's authenticated identity or touches sensitive data, are not measured.
+ 
+
+\subsection{Input and Output Handling}
+
+Finally, we characterize the channels through which untrusted data enters an application---user requests, web and third-party content, database contents---and which AI components each channel reaches. These are measured by the data-flow analysis as \emph{source classes} and the \emph{sinks} they reach (Chapter~\ref{sec:toolkit}). Whether outputs are validated before reaching a sensitive operation is a defense; like the other defenses of Section~\ref{sec:defenses}, it was not measured within the time available for this thesis and is left to future work.
+
+\subsection{Topic}
+\label{sec:application-topic}
+
+% ============================================================
+% Application Topic Schema — Section IV-A-e
+% and
+% Topic Extraction Methodology — Section IV-B, category (f)
+% ============================================================
+
+% ------------------------------------------------------------
+% IV-A-e: Topic definitions
+% ------------------------------------------------------------
+% Requires: \usepackage{enumitem} for the [leftmargin=*] tweak (optional —
+% drop that option and it still works with the plain description list).
+
+% ============================================================
+% Corpus classification — topic taxonomy and distribution
+% Add topic_distribution.pdf to your Overleaf project files,
+% then \input{} or paste this section directly.
+% ============================================================
+
+Each application in the corpus is assigned one of 15 topic labels
+describing its primary domain --- e.g.\ \emph{Developer Tools \& Coding
+Agents}, \emph{General-Purpose Agent Platforms \& Orchestration},
+\emph{Cybersecurity}, and \emph{Finance \& Investment} --- obtained by
+prompting a large language model with each repository's \texttt{README.md}.
+The label set itself was derived iteratively: an initial pass over a
+sample of READMEs produced candidate topics, which were consolidated into
+the 15 labels shown in Table~\ref{tab:topic-counts}, against which the full
+516-repository corpus was then classified.
+
+{% Repository names may also break at hyphens, and the list is set ragged-right,
+% so long names wrap inside the page instead of running past the margin.
+\expandafter\def\expandafter\UrlBreaks\expandafter{\UrlBreaks\do\-}%
+\Urlmuskip=0mu plus 1mu\relax
+\raggedright
+\begin{description}[leftmargin=*, itemsep=2pt, font=\normalfont\bfseries]
+  \item[Developer Tools \& Coding Agents] Coding assistants, IDE/CLI agents, dev-workflow automation. \textit{E.g.,} \url{anthropics/claude-code}, \url{continuedev/continue}, \url{google-gemini/gemini-cli}.
+  \item[General-Purpose Agent Platforms \& Orchestration] Domain-agnostic agent frameworks, runtimes, starter scaffolding. \textit{E.g.,} \url{reworkd/AgentGPT}, \url{Mintplex-Labs/anything-llm}, \url{lobehub/lobehub}.
+  \item[Research \& Data Analysis] Information gathering, synthesis, structured data analysis. \textit{E.g.,} \url{assafelovic/gpt-researcher}, \url{jupyterlab/jupyter-ai}, \url{SakanaAI/AI-Scientist-v2}.
+  \item[Productivity \& Knowledge Management] Note-taking, task/project management, knowledge bases. \textit{E.g.,} \url{langchain-ai/openwiki}, \url{mayooear/ai-pdf-chatbot-langchain}, \url{netease-youdao/LobsterAI}.
+  \item[Chatbots \& Conversational AI] General-purpose conversational assistants. \textit{E.g.,} \url{danny-avila/LibreChat}, \url{chatchat-space/Langchain-Chatchat}, \url{langbot-app/LangBot}.
+  \item[Cybersecurity] Vulnerability scanning, pentesting, security monitoring. \textit{E.g.,} \url{GreyDGL/PentestGPT}, \url{TracecatHQ/tracecat}, \url{snyk/agent-scan}.
+  \item[Browser \& Web Automation] Browser/computer-use agents, mobile automation. \textit{E.g.,} \url{browser-use/browser-use}, \url{openai/openai-cua-sample-app}, \url{QIN2DIM/hcaptcha-challenger}.
+  \item[Creative Media (Image/Video/Design)] Image/video generation and editing, design copilots. \textit{E.g.,} \url{11cafe/jaaz}, \url{ATH-MaaS/ComfyUI-Copilot}, \url{superdesigndev/superdesign}.
+  \item[Finance \& Investment] Market research, trading, financial analysis agents. \textit{E.g.,} \url{Azure-Samples/Agentic-AI-Investment-Analysis-Sample}, \url{microsoft/qlib}, \url{The-Swarm-Corporation/AutoHedge}.
+  \item[Education \& Learning] Courses, tutorials, and learning aids for agentic AI. \textit{E.g.,} \url{coleam00/ai-agents-masterclass}, \url{Windy3f3f3f3f/claude-code-from-scratch}, \url{THU-MAIC/OpenMAIC}.
+  \item[Other / Miscellaneous] Single-purpose apps not fitting other categories. \textit{E.g.,} \url{dimensionalOS/dimos}, \url{sergioq2/Law_Bot_Assistance}, \url{codewithaarohi/AI-Travel-Planning-App-using-LangGraph-and-MCP}.
+  \item[Content Creation \& Writing] Translation, long-form writing, content publishing. \textit{E.g.,} \url{andrewyng/translation-agent}, \url{icip-cas/PPTAgent}, \url{EdwardAThomson/NovelWriter}.
+  \item[Voice \& Audio] Voice bots, speech-to-speech, call-center automation. \textit{E.g.,} \url{huggingface/speech-to-speech}, \url{livekit-examples/agent-starter-node}, \url{microsoft/call-center-ai}.
+  \item[Job Search \& Recruiting] Auto-apply tools, job matching, hiring assistants. \textit{E.g.,} \url{feder-cr/Jobs_Applier_AI_Agent_AIHawk}, \url{Liam-Frost/AutoApply}, \url{stickerdaniel/linkedin-mcp-server}.
+  \item[Healthcare \& Medical] Clinical decision support, biomedical research agents. \textit{E.g.,} \url{jinm29/ai-healthcare-app}, \url{microsoft/Prior-Authorization-Multi-Agent-Solution-Accelerator}, \url{snap-stanford/Biomni}.
+\end{description}
+\par}
+% ============================================================
+
+% ------------------------------------------------------------
+% Table: topic distribution (fill in as IV-A-e's companion table,
+% or move next to Table IV.B's other summary tables — your call)
+% ------------------------------------------------------------
+\begin{table}[htbp]
+\centering
+\small
+\caption{Distribution of the 15 application topics across the 516-repository corpus.}
+\label{tab:topic-counts}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Topic} & \textbf{Count} \\
+\midrule
+Developer Tools \& Coding Agents & 154 \\
+General-Purpose Agent Platforms \& Orchestration & 122 \\
+Research \& Data Analysis & 53 \\
+Productivity \& Knowledge Management & 31 \\
+Chatbots \& Conversational AI & 29 \\
+Cybersecurity & 19 \\
+Browser \& Web Automation & 18 \\
+Creative Media (Image/Video/Design) & 16 \\
+Finance \& Investment & 16 \\
+Education \& Learning & 16 \\
+Other / Miscellaneous & 12 \\
+Content Creation \& Writing & 10 \\
+Voice \& Audio & 9 \\
+Job Search \& Recruiting & 8 \\
+Healthcare \& Medical & 3 \\
+\midrule
+\textbf{Total} & \textbf{516} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ------------------------------------------------------------
+% IV-B, category (f): Topic extraction methodology
+% ------------------------------------------------------------
+% Suggested placement: alongside the other IV-B subsections/paragraphs
+% for categories (a)-(e), as the write-up for category (f).
+
+Unlike the other fields, the application topic is not extracted via
+static API-pattern matching, since a repository's domain is not signaled
+by any fixed set of function or method calls. Instead, each repository's
+\texttt{README.md} was passed to a large language model, which classified
+it into one of the 15 topic labels defined in Section~\ref{sec:application-topic}.
+The label set was itself derived iteratively: an initial pass over a sample
+of READMEs produced candidate topics, which were then consolidated and
+refined until the 15 labels above were reached, after which the full
+516-repository corpus was classified against this fixed set. This is the
+only field in the metadata schema that relies on LLM-based
+classification rather than deterministic static analysis, a distinction
+worth flagging explicitly given the emphasis of this thesis on
+evidence-based detection (Section~\ref{sec:extraction-methodology})
+for all other fields.
+
+\section{Metadata Extraction}
+\label{sec:extraction-methodology}
+ 
+Metadata is extracted by a combination of automated analysis and targeted manual validation. Automated extraction scans each repository with AST-based pattern matching, complemented by regular expressions where the AST is uninformative, to locate framework imports and agent definitions, instantiation of retrieval and vector-store clients, tool definitions and registrations, and external API calls and file-system operations. For architectures that the automated pass cannot resolve unambiguously---for example, agents constructed through indirection or configuration---we perform manual code review, and every repository's record is checked by at least one researcher. 
+
+We additionally run consistency checks: every extracted agent and tool reference (e.g. a tool invocation or an agent handoff) must resolve to a corresponding definition in the repository, and fields derived from multiple sites—such as \texttt{execution\_capable} and \texttt{n\_tools}—must agree across the files in which they are observed. Violations are flagged for manual review.
+The resulting records are stored as structured JSON and analysed in Chapter~\ref{chap:results}.
+
+% ============================================================
+% Metadata Extraction Tables — Section IV-B (compact version)
+% Requires in preamble: \usepackage{longtable}, \usepackage{booktabs}
+% Compactness changes vs. the previous version:
+%   - API patterns are comma-separated and left to wrap naturally,
+%     instead of one \newline per pattern (this is the main space saving)
+%   - \footnotesize instead of \small
+%   - \renewcommand{\arraystretch}{0.9} tightens row height slightly
+% ============================================================
+
+% ------------------------------------------------------------
+% Table IV.B.1 — n_agents (Agent Creation)
+% ------------------------------------------------------------
+{\footnotesize
+\renewcommand{\arraystretch}{0.9}
+\begin{longtable}{@{}p{0.20\textwidth}p{0.10\textwidth}p{0.64\textwidth}@{}}
+\caption{APIs signaling agent instantiation (\texttt{n\_agents}), by framework and language.}
+\label{tab:agent-creation-apis} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Creation API(s)} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{c}{\tablename\ \thetable{} -- continued from previous page} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Creation API(s)} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+Agno & Python & \texttt{Agent(}, \texttt{Team(}, \texttt{Workflow(} \\ \midrule
+LangChain & Python & \texttt{create\_react\_agent(}, \texttt{create\_json\_agent(}, \texttt{create\_openai\_tools\_agent(}, \texttt{create\_tool\_calling\_agent(}, \texttt{create\_structured\_chat\_agent(}, \texttt{AgentExecutor(} \\ \midrule
+LangGraph & Python & \texttt{StateGraph(}, \texttt{MessageGraph(}, \texttt{create\_react\_agent(}, \texttt{MemorySaver(}, \texttt{SqliteSaver(} \\ \midrule
+CrewAI & Python & \texttt{Agent(}, \texttt{Crew(} \\ \midrule
+AutoGen & Python & \texttt{ConversableAgent(}, \texttt{AssistantAgent(}, \texttt{UserProxyAgent(}, \texttt{GroupChat(} \\ \midrule
+LlamaIndex & Python & \texttt{ReActAgent(}, \texttt{OpenAIAgent(}, \texttt{FunctionCallingAgentWorker(}, \texttt{AgentRunner(}, \texttt{Workflow(} \\ \midrule
+Pydantic AI & Python & \texttt{Agent(}, \texttt{pydantic\_ai.Agent(} \\ \midrule
+Smolagents & Python & \texttt{ToolCallingAgent(}, \texttt{CodeAgent(}, \texttt{ManagedAgent(} \\ \midrule
+Haystack & Python & \texttt{Agent(}, \texttt{Pipeline(} \\ \midrule
+OpenAI Agents SDK & Python & \texttt{Agent(} \\ \midrule
+Bee Agent Framework & Python & \texttt{ReActAgent(}, \texttt{RequirementAgent(} \\ \midrule
+LangChain.js & JS/TS & \texttt{createReactAgent(}, \texttt{createOpenAIToolsAgent(}, \texttt{createToolCallingAgent(}, \texttt{new AgentExecutor(} \\ \midrule
+LangGraph.js & JS/TS & \texttt{new StateGraph(} \\ \midrule
+Mastra & JS/TS & \texttt{new Mastra(}, \texttt{createAgent(}, \texttt{new Agent\textless{}}, \texttt{MastraAgent} \\ \midrule
+Vercel AI SDK & JS/TS & \texttt{generateText(}, \texttt{streamText(}, import from \texttt{'ai'} / \texttt{'@ai-sdk/*'} \\ \midrule
+ElizaOS & JS/TS & \texttt{createEliza(}, \texttt{ElizaAgent(}, \texttt{new AgentRuntime(} \\ \midrule
+Deep Agents JS & JS/TS & \texttt{deepAgents(}, \texttt{DeepAgent}, \texttt{DeepAgentConfig} \\ \midrule
+Bee Agent Framework & JS/TS & \texttt{new ReActAgent(}, \texttt{new RequirementAgent(} \\ \midrule
+CopilotKit & JS/TS & \texttt{useCopilotAction(}, \texttt{\textless{}CopilotKit}, \texttt{@copilotkit/react-core} \\ \midrule
+
+\end{longtable}
+}
+\textit{Note: Bee Agent Framework (Python) matches imports from both the current \texttt{beeai\_framework.*} package root and the legacy \texttt{bee\_agent\_framework} root. No framework-agnostic generic pattern is used for this field --- the one candidate considered, \texttt{.compile(}, was rejected after testing showed it firing on unrelated code (\texttt{re.compile(...)}, ML \texttt{.compile()} calls). The MCP SDK is excluded, since it constructs servers rather than agents.}
+
+
+% ------------------------------------------------------------
+% Table IV.B.2 — has_rag / RAG store count (RAG Creation)
+% ------------------------------------------------------------
+{\footnotesize
+\renewcommand{\arraystretch}{0.9}
+\begin{longtable}{@{}p{0.20\textwidth}p{0.10\textwidth}p{0.64\textwidth}@{}}
+\caption{APIs signaling vectorstore/memory-store instantiation (\texttt{has\_rag}).}
+\label{tab:rag-creation-apis} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Creation API(s)} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{c}{\tablename\ \thetable{} -- continued from previous page} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Creation API(s)} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+Chroma & Python & \texttt{Chroma(}, \texttt{chromadb.Client(}, \texttt{chromadb.PersistentClient(}, \texttt{Chroma.from\_documents(}, \texttt{Chroma.from\_texts(} \\ \midrule
+Pinecone & Python & \texttt{Pinecone(}, \texttt{pinecone.Index(}, \texttt{Pinecone.from\_existing\_index(}, \texttt{Pinecone.from\_documents(}, \texttt{Pinecone.from\_texts(} \\ \midrule
+Qdrant & Python & \texttt{QdrantClient(}, \texttt{Qdrant.from\_documents(}, \texttt{Qdrant.from\_texts(} \\ \midrule
+Weaviate & Python & \texttt{weaviate.Client(}, \texttt{weaviate.connect\_to\_local(}, \texttt{weaviate.connect\_to\_weaviate\_cloud(}, \texttt{Weaviate.from\_documents(}, \texttt{Weaviate.from\_texts(} \\ \midrule
+PGVector & Python & \texttt{PGVector(} \\ \midrule
+Milvus & Python & \texttt{MilvusClient(}, \texttt{connections.connect(}, \texttt{Milvus.from\_documents(} \\ \midrule
+Mem0 & Python & \texttt{Memory(}, \texttt{MemoryClient(} \\ \midrule
+Zep & Python & \texttt{ZepClient(}, \texttt{AsyncZep(}, \texttt{Zep(} \\ \midrule
+LlamaIndex & Python & \texttt{VectorStoreIndex(}, \texttt{VectorStoreIndex.from\_documents(}, \texttt{VectorStoreIndex.from\_vector\_store(}, \texttt{SimpleDirectoryReader(} \\ \midrule
+Chroma JS & JS/TS & \texttt{new ChromaClient(} \\ \midrule
+Pinecone JS & JS/TS & \texttt{new Pinecone(} \\ \midrule
+Qdrant JS & JS/TS & \texttt{new QdrantClient(} \\ \midrule
+Weaviate JS & JS/TS & \texttt{weaviate.client(} \\ \midrule
+Zep JS & JS/TS & \texttt{new ZepClient(} \\ \midrule
+\textit{(generic, framework-agnostic)} & Both & \texttt{.from\_documents(}, \texttt{.from\_texts(}, \texttt{.from\_vector\_store(}, \texttt{.from\_existing\_index(} \\ \midrule
+
+\end{longtable}
+}
+\textit{Note: the generic row covers vectorstores built via a classmethod factory rather than a direct constructor. A bare \texttt{Client(}/\texttt{PersistentClient(} pattern was considered and rejected --- testing showed it false-positiving on unrelated clients (e.g.\ \texttt{redis.Client(...)}).}
+
+
+% ------------------------------------------------------------
+% Table IV.B.3 — rag_writers (RAG Writes)
+% ------------------------------------------------------------
+{\footnotesize
+\renewcommand{\arraystretch}{0.9}
+\begin{longtable}{@{}p{0.20\textwidth}p{0.10\textwidth}p{0.64\textwidth}@{}}
+\caption{APIs signaling memory/vectorstore write operations (\texttt{rag\_writers}).}
+\label{tab:rag-write-apis} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Write API(s)} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{c}{\tablename\ \thetable{} -- continued from previous page} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Write API(s)} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+Chroma & Python & \texttt{.add(}, \texttt{.upsert(}, \texttt{.update(} \\ \midrule
+Pinecone & Python & \texttt{.upsert\_records(}, \texttt{.update(} \\ \midrule
+Qdrant & Python & \texttt{.upsert(}, \texttt{.upload\_records(} \\ \midrule
+Weaviate & Python & \texttt{.add\_object(}, \texttt{.insertMany(} \\ \midrule
+PGVector & Python & \texttt{.add\_documents(} \\ \midrule
+Milvus & Python & \texttt{.insert(} \\ \midrule
+Zep & Python & \texttt{.memory.add(}, \texttt{.thread.add\_messages(}, \texttt{.add\_memory(}, \texttt{.aadd\_memory(} (legacy client) \\ \midrule
+LangChain & Python & \texttt{.add\_documents(} \\ \midrule
+LlamaIndex & Python & \texttt{.persist()}, \texttt{.insert(} \\ \midrule
+Mem0 & Python & \texttt{.add(}, \texttt{.store\_conversation(} \\ \midrule
+Agno & Python & \texttt{Knowledge()}, \texttt{knowledge.add\_documents(} \\ \midrule
+Haystack & Python & \texttt{.add\_documents(}, \texttt{.run(} \\ \midrule
+CrewAI \textit{(agent-specific)} & Python & \texttt{collection.add(}, \texttt{vector\_store.add\_documents(} \\ \midrule
+AutoGen \textit{(agent-specific)} & Python & \texttt{memory.add(}, \texttt{memory.store(} \\ \midrule
+LangGraph \textit{(agent-specific)} & Python & \texttt{vector\_store.add\_documents(}, \texttt{store\_node(} \\ \midrule
+Chroma JS & JS/TS & \texttt{.add(\{}, \texttt{.upsert(\{} \\ \midrule
+Pinecone JS & JS/TS & \texttt{.upsertRecords(}, \texttt{.update(} \\ \midrule
+Qdrant JS & JS/TS & \texttt{.upsert(}, \texttt{.uploadRecords(}, \texttt{.upload\_collection(} \\ \midrule
+Weaviate JS & JS/TS & \texttt{.insertMany(} \\ \midrule
+Zep JS & JS/TS & \texttt{.memory.add(}, \texttt{.addMemory(} \\ \midrule
+LangChain JS & JS/TS & \texttt{.addDocuments(} \\ \midrule
+API endpoint & --- & \texttt{POST /api/memories}, \texttt{POST /api/memories/} \\ \midrule
+\textit{(generic)} & Both & \texttt{.batch.create(} / \texttt{batch.add} (batch), \texttt{.build\_index(} (index build), \texttt{.save(} (persistence), \texttt{.store(} / \texttt{.remember(} (bare storage verbs) \\ \midrule
+
+\end{longtable}
+}
+\textit{Note: this table documents how individual write \emph{sites} are detected --- i.e.\ which method calls, on a receiver already confirmed as a tracked store (Table~\ref{tab:rag-creation-apis}), count as a write. The \texttt{rag\_writers} field itself is derived one step further: it is the set of confirmed \emph{agent names} linked (Table~\ref{tab:store-agent-linking}) to a store variable that also has at least one write site recorded against it --- not simply "which frameworks have a write API," and not a raw count of write sites.}
+
+
+% ------------------------------------------------------------
+% Table IV.B.4 — rag_readers (RAG Reads)
+% ------------------------------------------------------------
+{\footnotesize
+\renewcommand{\arraystretch}{0.9}
+\begin{longtable}{@{}p{0.20\textwidth}p{0.10\textwidth}p{0.64\textwidth}@{}}
+\caption{APIs signaling memory/vectorstore read (retrieval) operations (\texttt{rag\_readers}).}
+\label{tab:rag-read-apis} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Read API(s)} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{c}{\tablename\ \thetable{} -- continued from previous page} \\
+\toprule
+\textbf{Framework} & \textbf{Language} & \textbf{Read API(s)} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+Chroma & Python & \texttt{.query(}, \texttt{.get(} \\ \midrule
+Pinecone & Python & \texttt{.query(}, \texttt{.fetch(} \\ \midrule
+Qdrant & Python & \texttt{.search(}, \texttt{.query\_points(}, \texttt{.scroll(} \\ \midrule
+Weaviate & Python & \texttt{.query.near\_text(}, \texttt{.query.fetch\_objects(}, \texttt{.query.near\_vector(} \\ \midrule
+PGVector & Python & \texttt{.similarity\_search(}, \texttt{.similarity\_search\_with\_score(} \\ \midrule
+Milvus & Python & \texttt{.search(}, \texttt{.query(} \\ \midrule
+Zep & Python & \texttt{.memory.get(}, \texttt{.search\_memory(}, \texttt{.asearch\_memory(}, \texttt{.thread.get\_user\_context(} \\ \midrule
+LangChain & Python & \texttt{.similarity\_search(}, \texttt{.as\_retriever(}, \texttt{.get\_relevant\_documents(} \\ \midrule
+LlamaIndex & Python & \texttt{.as\_retriever(}, \texttt{.retrieve(}, \texttt{query\_engine.query(} \\ \midrule
+Mem0 & Python & \texttt{.search(}, \texttt{.get\_all(} \\ \midrule
+Agno & Python & \texttt{knowledge.search(} \\ \midrule
+Haystack & Python & retriever component \texttt{.run(} (disambiguated by preceding \texttt{Retriever(} constructor) \\ \midrule
+CrewAI \textit{(agent-specific)} & Python & \texttt{collection.query(}, \texttt{vector\_store.similarity\_search(} \\ \midrule
+AutoGen \textit{(agent-specific)} & Python & \texttt{memory.get(}, \texttt{memory.query(} \\ \midrule
+LangGraph \textit{(agent-specific)} & Python & \texttt{vector\_store.similarity\_search(}, \texttt{retriever\_node(} \\ \midrule
+Agno \textit{(agent-specific)} & Python & \texttt{knowledge.search(}, \texttt{knowledge.retrieve(} \\ \midrule
+Chroma JS & JS/TS & \texttt{.query(\{} \\ \midrule
+Pinecone JS & JS/TS & \texttt{.query(\{}, \texttt{.fetch(\{} \\ \midrule
+Qdrant JS & JS/TS & \texttt{.search(}, \texttt{.query(} \\ \midrule
+Weaviate JS & JS/TS & \texttt{.query.nearText(}, \texttt{.query.fetchObjects(} \\ \midrule
+Zep JS & JS/TS & \texttt{.memory.get(}, \texttt{.searchMemory(} \\ \midrule
+LangChain JS & JS/TS & \texttt{.similaritySearch(}, \texttt{.asRetriever(} \\ \midrule
+API endpoint & --- & \texttt{GET /api/memories}, \texttt{GET /api/memories/\{id\}}, \texttt{POST /api/search} \\ \midrule
+\textit{(generic)} & Both & \texttt{.retrieve(} / \texttt{.get\_relevant\_documents(}, \texttt{.search\_memory(}, \texttt{.as\_retriever(} / \texttt{.get(} (low-confidence, context-gated) \\ \midrule
+
+\end{longtable}
+}
+\textit{Note: several read signatures (\texttt{.query(}, \texttt{.search(}, \texttt{.run(}) overlap with write or agent-call signatures elsewhere in the pipeline. A bare occurrence is only counted as a memory read once it is confirmed against a preceding binding to a known vectorstore/memory constructor in the same scope --- the same confirmation-gating logic used for framework detection (Section~\ref{sec:extraction-methodology}). As with \texttt{rag\_writers} (Table~\ref{tab:rag-write-apis}, note), the \texttt{rag\_readers} field itself is the set of confirmed agent names linked (Table~\ref{tab:store-agent-linking}) to a store that also has a read site recorded against it, not the raw set of frameworks in this table.}
+
+
+% ------------------------------------------------------------
+% Table IV.B.5 — has_agent_handoffs (Agent Handoff / A2A Interaction)
+% ------------------------------------------------------------
+{\footnotesize
+\renewcommand{\arraystretch}{0.9}
+\begin{longtable}{@{}p{0.16\textwidth}p{0.07\textwidth}p{0.37\textwidth}p{0.32\textwidth}@{}}
+\caption{APIs signaling structured delegation between agents (\texttt{has\_agent\_handoffs}).}
+\label{tab:agent-handoff-apis} \\
+\toprule
+\textbf{Framework / Protocol} & \textbf{Language} & \textbf{Handoff Pattern(s)} & \textbf{Mechanism} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{c}{\tablename\ \thetable{} -- continued from previous page} \\
+\toprule
+\textbf{Framework / Protocol} & \textbf{Language} & \textbf{Handoff Pattern(s)} & \textbf{Mechanism} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r}{\textit{Continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+OpenAI Agents SDK & Python & \texttt{handoffs=[}, \texttt{Handoff(} & Explicit handoff list passed to an agent constructor \\ \midrule
+LangGraph & Python & \texttt{.add\_edge(}, \texttt{Command(goto=}, conditional edge functions & Graph edges / conditional routing between nodes \\ \midrule
+AutoGen & Python & \texttt{GroupChat(}, \texttt{.initiate\_chat(}, \texttt{speaker\_selection\_method=} & Multi-agent conversation with a selectable next speaker \\ \midrule
+CrewAI & Python & \texttt{Process.hierarchical}, \texttt{manager\_agent=}, \texttt{manager\_llm=} & Manager agent delegates to crew members \\ \midrule
+Bee Agent Framework & Python & \texttt{HandoffTool(}, import from \texttt{beeai\_framework.tools.handoff} & Dedicated handoff tool on a \texttt{RequirementAgent} \\ \midrule
+Agno & Python & \texttt{Team(}, \texttt{mode="coordinate"}, \texttt{mode="route"} & Team-level delegation across member agents \\ \midrule
+LlamaIndex & Python & \texttt{.add\_workflows(}, \texttt{AgentWorkflow(}, step-to-step event handoff & Workflow-level step-to-step routing \\ \midrule
+Smolagents & Python & \texttt{ManagedAgent(}, \texttt{managed\_agents=[} & Manager agent delegates to managed sub-agents \\ \midrule
+LangGraph.js & JS/TS & \texttt{.addEdge(}, \texttt{Command(\{ goto:} & Graph edges / conditional routing \\ \midrule
+Mastra & JS/TS & \texttt{.getAgent(} (from inside another agent's tool), \texttt{Workflow(}, \texttt{.step(} chaining & Workflow-based handoff between steps/agents \\ \midrule
+Deep Agents JS & JS/TS & inherits LangGraph.js edge patterns & Graph-based delegation \\ \midrule
+ElizaOS & JS/TS & \texttt{runtime.processActions(}, action handlers dispatching to another agent/plugin & Action-dispatch style delegation \\ \midrule
+A2A SDK & Protocol & \texttt{A2AClient(}, \texttt{.send\_task(}, \texttt{.get\_task(}, agent-card discovery (\texttt{/.well-known/agent.json}) & Cross-process agent-to-agent delegation over the A2A protocol \\ \midrule
+MCP SDK & Protocol & tool call returning control to a different agent/session, \texttt{sampling/createMessage} request & Rare/indirect --- low-confidence unless paired with an explicit multi-agent constructor elsewhere in the file \\ \midrule
+\textit{(generic)} & Both & \texttt{delegate\_to\_agent(} / \texttt{.delegate(}, \texttt{sub\_agent.run(}, \texttt{invoke\_agent(}, \texttt{agent.invoke\_child(}, \texttt{tool.invoke\_agent}, \texttt{A2A} / \texttt{agent-to-agent} & Framework-agnostic fallback (protocol strings gated on \texttt{A2AClient(}/\texttt{a2a-sdk} co-occurrence) \\ \midrule
+
+\end{longtable}
+}
+\textit{Note: a handoff is only counted as confirmed when (1) at least two agent/team/crew instances exist in the same repository, and (2) at least one pattern above appears between two distinct agent bindings --- mirroring the confirmation-gating principle used for framework detection.}
+
+
+% ------------------------------------------------------------
+% Table IV.B.6 — unsanitized_writes (keyword lists for the taint heuristic)
+% ------------------------------------------------------------
+\begin{table}[htbp]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{0.9}
+\caption{Keyword lists driving the \texttt{unsanitized\_writes} taint heuristic.}
+\label{tab:unsanitized-keywords}
+\begin{tabular}{@{}p{0.20\textwidth}p{0.28\textwidth}p{0.44\textwidth}@{}}
+\toprule
+\textbf{List} & \textbf{Purpose} & \textbf{Keywords} \\
+\midrule
+Taint source markers & Marks a traced-back write argument as tainted &
+\texttt{request}, \texttt{response}, \texttt{.text}, \texttt{.content}, \texttt{http}, \texttt{fetch}, \texttt{tool\_output}, \texttt{tool\_result}, \texttt{retrieved}, \texttt{retrieval}, \texttt{user\_input}, \texttt{external}, \texttt{web\_content} \\
+\midrule
+Sanitizer keywords & Suppresses the taint flag if found in the 5 lines above the write &
+\texttt{validate}, \texttt{sanitize}, \texttt{clean}, \texttt{escape}, \texttt{schema}, \texttt{pydantic} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+Flag logic: \texttt{unsanitized = tainted and not sanitizer\_nearby}, computed per write call matching a \texttt{rag\_writers}-category pattern (Table~\ref{tab:rag-write-apis}), using the call's first argument or, if that argument is a bare variable, its most recent same-function assignment (one hop back). \texttt{radar\_summary.unsanitized\_writes} is \texttt{True} if any single write in the repository comes back unsanitized. This is a one-hop, same-function heuristic rather than full interprocedural taint tracking; the data-flow analysis of Chapter~\ref{sec:toolkit} measures the same property by tracing values across functions and files.
+
+
+% ------------------------------------------------------------
+% n_tools — structural extraction, not an API-pattern table
+% ------------------------------------------------------------
+\paragraph{Number of tools (\texttt{n\_tools}).}
+Unlike the fields above, \texttt{n\_tools} is not detected via a call/method
+API pattern at all --- it is read directly out of the \emph{keyword
+arguments} at a confirmed agent-creation call site (Table~\ref{tab:agent-creation-apis}).
+If that call passes a literal \texttt{tools=[\ldots]} list, every element
+that is a plain identifier is collected as a bound tool name; \texttt{n\_tools}
+is the size of the deduplicated set of these names across every confirmed
+agent in the repository. Two gating decisions follow directly from the
+project's ``say nothing rather than assume'' principle: (1) only agents whose
+framework is already confirmed against the tracked-framework set contribute
+--- a tool bound to an unconfirmed or generic construct is not counted; and
+(2) only a \emph{literal} list or tuple is read --- if \texttt{tools=} is
+passed as a variable (e.g.\ \texttt{tools=get\_tool\_definitions()}), the
+call is not inspected further, since resolving that value would require
+guessing rather than reading it off the syntax tree.
+
+
+% ------------------------------------------------------------
+% Table IV.B.7 — store-to-agent linking (underlies shared_across_agents,
+% rag_writers, rag_readers)
+% ------------------------------------------------------------
+\paragraph{Store-to-agent linking.}
+\texttt{shared\_across\_agents}, \texttt{rag\_writers}, and \texttt{rag\_readers}
+all depend on an intermediate signal not covered by Tables~\ref{tab:rag-write-apis}--\ref{tab:rag-read-apis}
+on their own: a \emph{link} between a confirmed store (Table~\ref{tab:rag-creation-apis})
+and a confirmed agent (Table~\ref{tab:agent-creation-apis}). A link is
+recorded when an agent-creation call passes one of the keyword arguments in
+Table~\ref{tab:store-agent-linking} with a value that resolves to an
+already-known store variable --- e.g.\ \texttt{Agent(memory=kb)}, where
+\texttt{kb} was earlier bound to a confirmed vectorstore/memory instance.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{0.9}
+\caption{Keyword arguments used to link a store to an agent at creation time.}
+\label{tab:store-agent-linking}
+\begin{tabular}{@{}p{0.35\textwidth}p{0.57\textwidth}@{}}
+\toprule
+\textbf{Keyword argument} & \textbf{Notes} \\
+\midrule
+\texttt{memory=}, \texttt{vector\_store=}, \texttt{vectorstore=}, \texttt{retriever=}, \texttt{knowledge=}, \texttt{store=} & Only a bare variable reference is followed (e.g.\ \texttt{memory=kb}); the value must already resolve to a confirmed store from Table~\ref{tab:rag-creation-apis}. Covers the conventions observed across LangChain-, CrewAI-, AutoGen-, and LlamaIndex-style constructors; not exhaustive. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Given the set of stores linked to one or more agents this way:
+\begin{itemize}
+  \item \texttt{shared\_across\_agents} is \texttt{True} if any single store is linked to two or more distinct agents.
+  \item \texttt{rag\_writers} is the set of confirmed agent names linked to a store that also has at least one write site (Table~\ref{tab:rag-write-apis}) recorded against that same store variable.
+  \item \texttt{rag\_readers} is defined symmetrically, using read sites (Table~\ref{tab:rag-read-apis}) in place of write sites.
+\end{itemize}
+All three fields are therefore agent-level and link-gated, not raw counts or framework lists --- a repository can have confirmed writes and reads without any of these three being non-empty, if no agent-creation call ever explicitly wires a store in through one of the keywords above.
+
+\section{Scope and Limitations}
+\label{sec:limitations}
+ 
+Several limitations bound the conclusions that can be drawn from RADAR. The corpus is restricted to open-source projects on GitHub, so closed-source and proprietary agentic systems---which may follow different security practices---are not represented. We also restrict the language scope to Python and JavaScript/TypeScript, excluding agents written in Go, Rust, or Java. Because we sort the crawl by popularity and the GitHub search API caps results at~1{,}000 per query, the dataset is biased toward better-known projects and, despite our partitioning, may under-represent the long tail of small or recently published repositories; popularity is moreover not a proxy for security maturity. The framework-versus-application classification relies on LLM judges over README text and is therefore subject to model error on projects with sparse or misleading documentation, which we mitigate but do not eliminate through majority voting and manual adjudication. Finally, the dataset reflects a single snapshot in time (14 August 2026); framework adoption and design patterns in this space evolve quickly.
+ 
+These limitations notwithstanding, RADAR provides, to our knowledge, the first large-scale empirical characterization of architectural and security-relevant patterns in real-world agentic applications, and a foundation for the prevalence analysis of Chapters~\ref{sec:toolkit} and~\ref{chap:results} and for future security benchmarks.
+
+% #############################################################################
+
+% #############################################################################
+
+% \subsection{Metadata}
+% \begin{itemize}
+% \item \texttt{n\_agents}: The total number of agent instances created in the codebase. This indicates the scale of the multi-agent system.
+% \item \texttt{n\_tools}: The number of tool or function definitions available to agents. Tools represent the actions agents can perform.
+% \item \texttt{has\_rag}: A boolean indicating whether the system uses Retrieval-Augmented Generation, which is a prerequisite for RAG-based contamination attacks.
+% \item \texttt{has\_agent\_handoffs}: A boolean indicating whether one agent can call or delegate tasks to another agent, representing an alternative contamination path.
+% \end{itemize}
+
+
+% The RAG metadata category is the core contribution of this thesis, as it captures the patterns that enable cross-agent contamination through shared vector databases:
+
+% \begin{itemize} ite for cross-agent contamination.
+% \item \texttt{rag\_writers}: A list of agents that can add or upsert content to the RAG database. These represent potential contamination sources.
+% \item \texttt{rag\_readers}: A list of agents that query or read from the RAG database. These represent potential contamination victims.
+% \item \texttt{unsanitized\_writes}: A boolean indicating whether agent writes to RAG occur without input validation or sanitization. When true, the attack is trivially exploitable.
+% \item \texttt{rag\_influences\_actions}: A boolean indicating whether RAG content affects agent behavior (tool selection, planning, decisions) rather than just response content. Behavioral contamination is significantly more dangerous than output-only contamination.
+% \end{itemize}
+
+% \section{Static Analysis Toolkit}
+% Finally, a toolkit was built in order to find patterns that could be considered vulnerabilities. The initial step was to categorize the patterns we were looking for these included: agent creations, agent calls, any agent handoffs, writes to memory and read from memory.
+
+% \subsection{Pattern Categories}
+
+% We defined the following categories:
+% \begin{enumerate}
+%     \item Agent Creation
+%     \item Agent Calls 
+%     \item Agent Handoffs - Signifies the possibility of propagation of hallucinations and/or malware
+%     \item Memory Write
+%     \item Memory Read
+% \end{enumerate}
+% Given the frameworks previously mentioned, we verified

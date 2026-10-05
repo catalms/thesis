@@ -1,0 +1,50 @@
+% #############################################################################
+% This is Chapter 1
+% !TEX root = ../main.tex
+% #############################################################################
+% Change the Name of the Chapter i the following line
+\fancychapter{Introduction}
+% The following line allows to ref this chapter
+\label{chap:intro}
+% o maravilhoso mundo dos agentes
+Agentic applications~\cite{agentic-survey}, software systems that combine one or more large language models (LLMs) with tools, memory, retrieval systems, and external services to autonomously plan and execute multi-step tasks, have rapidly evolved from research prototypes into production systems. They now power coding assistants (e.g. Devin~\cite{devin}, GitHub Copilot Workspace~\cite{copilot-workspace}, Cursor Agent Mode~\cite{cursor}), web and browser agents (e.g. WebArena~\cite{webarena}, BrowserUse~\cite{browser-use}, OpenDevin Web~\cite{opendevin}), enterprise automation platforms (e.g. Salesforce Einstein GPT Agent~\cite{salesforce-agentforce}, Microsoft AutoGen~\cite{autogen}, CrewAI~\cite{crewai}), customer-support workflows (e.g. Zendesk AI Agent~\cite{zendesk-ai-agent}, Intercom Fin~\cite{intercom-fin}, Freshdesk Freddy~\cite{freshdesk-freddy}, Ada~\cite{ada-support}), and security tooling (e.g. Takedown (vulnerability discovery)~\cite{takedown}, Reaper (security scanning)~\cite{reaper-scanner}, Garak (red-teaming)~\cite{garak2024}, Giskard~\cite{giskard}, PromptGuard~\cite{promptguard2025}). Standardized interfaces such as the Model Context Protocol (MCP)~\cite{mcp-blog} and growing connector ecosystems have further accelerated adoption by allowing agents to discover and invoke third-party capabilities with minimal integration effort. The result is a new class of software whose control flow is increasingly generated dynamically by LLMs at run time rather than explicitly encoded in source code.
+
+% o mma é afinal perigoso
+This flexibility creates security challenges that differ fundamentally from those of both conventional software and standalone LLMs. Because agent planning and execution are mediated through natural-language context, the distinction between data and executable instructions becomes blurred: content consumed by an agent, including retrieved documents, tool outputs, memory entries, and web content, may influence or redirect behavior. Recent incidents demonstrate the practical consequences of this design shift. Researchers have shown indirect prompt injection attacks that exfiltrate private repositories through MCP integrations~\cite{mcp-blog}, browser-agent compromises that hijack authenticated sessions~\cite{pleasefix}, and vulnerabilities in coding and enterprise agents that enable unauthorized execution or data leakage~\cite{takedown}. As agents acquire broader privileges and access to external systems, the consequences of these failures increase substantially.
+
+% RW
+Research and industry have responded rapidly to these risks. Emerging taxonomies identify attack vectors including prompt injection~\cite{greshake, pleasefix, agentdojo}, malicious data injection~\cite{agent-card-poisoning}, memory poisoning~\cite{memory-poison-sunil}, and tool abuse~\cite{tooltweak}, while frameworks such as the OWASP Top 10 for LLM Applications~\cite{owasp} and MITRE ATLAS~\cite{mitre-atlas} catalog adversarial techniques and associated risks. Recent work has also proposed defenses spanning guardrails~\cite{xiang2024guardagent,pro2guard}, information-flow control~\cite{costa2025fides}, runtime monitoring~\cite{pro2guard}, privilege separation~\cite{shi2025progent}, identity management~\cite{openid-identity}, and human-in-the-loop validation~\cite{hula}, while benchmarks such as AgentDojo~\cite{agentdojo} and Agent Security Bench~\cite{asb} measure attack effectiveness under controlled settings. However, an important question remains unanswered: how prevalent are the conditions that make these attacks possible in real agentic software?
+
+% o que fazemos
+This thesis addresses that gap through an empirical prevalence study of security-relevant design patterns in open-source agentic applications implemented in Python and JavaScript/TypeScript. We focus on these ecosystems because they host most widely used agent-development frameworks and open-source applications. We assemble RADAR, a dataset of 516 agentic applications collected from GitHub and selected to capture diversity across frameworks and application domains. We then operationalize an existing systematization of agent attacks and risks~\cite{kim2026sok} into concrete, statically detectable signals and measure them with two complementary static analyses: a pattern-based analysis that characterizes each application's \emph{structure}---its agents, tools, retrieval stores, and delegation between agents---and a data-flow analysis that traces, for every input to a model, tool, or store, \emph{where that input comes from}.
+
+Our analysis is intentionally structural rather than exploit-driven. Static analysis identifies potential exposure---the preconditions an attack needs---rather than confirmed exploitability; this distinction matters because agentic vulnerabilities are behavioral, context dependent, and model sensitive. Our objective is therefore not to prove that individual applications are exploitable, but to characterize, at scale, how often the conditions for known attacks are present in contemporary agentic software. Measuring whether applications adopt the defenses proposed in the literature would require a second analysis of comparable scope, one detector and one validation for each defense, which was not possible within the time available for this thesis; we review these defenses (Chapter~\ref{chap:back}) and leave measuring their adoption to future work.
+
+\section*{Research Questions}
+
+We structure the study around four research questions:
+
+\begin{description}
+  \item[RQ1.] \emph{What do open-source agentic applications look like?} We characterize the frameworks they use and how common agents, tools, retrieval-augmented generation, and multi-agent designs are.
+  \item[RQ2.] \emph{What data reaches the AI components of these applications, and where does it come from?} We measure which components receive data---model calls, agent instructions, tools, and retrieval stores---how much of that input is fixed in the code and how much is set at run time, and which kinds of source (end users, third-party content, databases, configuration) reach which components.
+  \item[RQ3.] \emph{How prevalent are the preconditions for known attacks on agentic applications?} We measure how often the code patterns that enable the attack vectors of Chapter~\ref{chap:back}---indirect and direct prompt injection, tool misuse, and memory poisoning---occur in practice.
+  \item[RQ4.] \emph{How reliably can these properties be measured with static analysis?} We validate the analyses against manually inspected code and state what they cannot observe.
+\end{description}
+
+\section*{Contributions}
+
+This thesis makes the following contributions:
+\begin{itemize}
+  \item \textbf{RADAR}, a curated dataset of 516 open-source agentic applications, obtained from 2{,}034 GitHub candidates through language and framework filters and an application-versus-framework classification by three LLM judges with manual adjudication (Chapter~\ref{chap:toolkit}).
+  \item A \textbf{metadata schema} that operationalizes agent-security risks into structural properties of an application, and a pattern-based extractor for Python and JavaScript/TypeScript (Chapter~\ref{chap:implement}).
+  \item A \textbf{data-flow analysis} for agentic applications that identifies the inputs of model calls, tools, and retrieval stores and traces them back, across functions and files, to their sources (Chapter~\ref{sec:toolkit}).
+  \item An \textbf{empirical characterization} of the structure, data flows, and attack preconditions of real agentic applications, with an assessment of the analyses' reliability (Chapter~\ref{chap:results}).
+\end{itemize}
+
+\section*{Main Findings}
+
+Of the 379 applications analysed for data flows, 67.5\% pass data to a model or agent, 43.5\% define tools, and 15.6\% use a vector store or agent memory. Content controlled by an end user or a third party reaches a model call in 53.6\% of the applications that call a model, and content the user does not type---web pages, retrieved documents, tool output---does so in 28.2\%. System prompts and agent instructions are mostly fixed in the code (80.6\% of instruction values are static), yet untrusted or indirect content reaches them in 13.3\% of the applications with model inputs. Tools are where the risk of acting on the environment concentrates: in 16.4\% of the applications with tools, a tool returns outside content to the model while a tool lets the model run commands or access files. Complete memory-poisoning chains---untrusted content written to a store whose retrieved content reaches a model---are rare (5.1\% of applications with stores), although almost half of these applications write untrusted content into a store. A manual review of a random sample shows that 88\% of the reported sinks are real and that the analysis errs mostly by omission, so these figures are lower bounds.
+
+\section*{Outline}
+
+The remainder of this thesis is organized as follows. Chapter~\ref{chap:back} reviews the attack vectors, risks, and defenses of agentic applications. Chapter~\ref{chap:toolkit} describes how the RADAR dataset was built. Chapter~\ref{chap:implement} defines the application metadata and its pattern-based extraction, and Chapter~\ref{sec:toolkit} the data-flow analysis. Chapter~\ref{chap:results} presents the results for each research question, Chapter~\ref{chap:discussion} discusses their implications, threats to validity, and related work, and Chapter~\ref{chap:conclusion} concludes and outlines future work.

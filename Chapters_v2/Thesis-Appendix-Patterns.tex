@@ -1,0 +1,179 @@
+% #############################################################################
+% Appendix: patterns searched by the data-flow analysis
+% Generated from the final pattern mapping of the analysis (mapping.py).
+% !TEX root = ../main.tex
+% #############################################################################
+\fancychapter{Searched Patterns}
+\label{app:patterns}
+
+This appendix lists every name the data-flow analysis of Chapter~\ref{sec:toolkit} searches for. Class and method names are matched on the last part of a call, so \texttt{Chroma} matches both \texttt{Chroma(...)} and \texttt{new Chroma(...)}; qualified names are matched after import aliases are resolved, so \texttt{import streamlit as st; st.chat\_input()} matches \texttt{streamlit.chat\_input}. Generic method names count only on a recognized object (Section~\ref{sec:df-recognition}).
+
+{\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.25\textwidth}>{\raggedright\arraybackslash}p{0.71\textwidth}@{}}
+\caption{Sources: where data comes from (Table~\ref{tab:df-sources}).}\label{tab:app-sources}\\
+\toprule
+\textbf{Pattern group} & \textbf{Searched names} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Pattern group} & \textbf{Searched names (continued)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{constant (developer)}} \\
+literals & string and number literals; templates with only literal parts; names bound once to a literal; members of enumerations \\
+file reads with a fixed path to a file in the repository & \texttt{fs.promises.readFile}, \texttt{fs.readFile}, \texttt{fs.readFileSync}, \texttt{fs/promises.readFile}, \texttt{open}, \texttt{pandas.read\_csv}, \texttt{pandas.read\_excel}, \texttt{pandas.read\_json} \\
+paths built from the file's own folder & \texttt{os.path.join}, \texttt{path.join}, \texttt{path.resolve} with \texttt{\_\_file\_\_} or \texttt{\_\_dirname} \\
+calls whose result is not content & \texttt{callable}, \texttt{ceil}, \texttt{defaultdict}, \texttt{encoding\_for\_model}, \texttt{floor}, \texttt{getEncoding}, \texttt{getpid}, \texttt{hasattr}, \texttt{hash}, \texttt{id}, \texttt{isinstance}, \texttt{len}, \texttt{monotonic}, \texttt{parseFloat}, \texttt{parseInt}, \texttt{perf\_counter}, \texttt{randint}, \texttt{random}, \texttt{round}, \texttt{time}, \texttt{uuid1}, \texttt{uuid4}, \texttt{v4} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{config (deployer)}} \\
+calls & \texttt{dotenv.dotenv\_values}, \texttt{os.environ.get}, \texttt{os.getenv} \\
+attributes & \texttt{os.environ}, \texttt{process.env} \\
+loaders of a fixed repository file & \texttt{js-yaml.load}, \texttt{json.load}, \texttt{toml.load}, \texttt{tomllib.load}, \texttt{yaml.load}, \texttt{yaml.safe\_load} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{user (end user)}} \\
+calls & \texttt{input}, \texttt{prompt-sync}, \texttt{readline-sync.question}, \texttt{streamlit.chat\_input}, \texttt{streamlit.text\_area}, \texttt{streamlit.text\_input}, \texttt{sys.stdin.read}, \texttt{sys.stdin.readline} \\
+methods / attributes & \texttt{parse\_args}, \texttt{process.argv}, \texttt{sys.argv} \\
+request objects and their fields & \texttt{req}, \texttt{request}; fields \texttt{args}, \texttt{body}, \texttt{cookies}, \texttt{data}, \texttt{files}, \texttt{form}, \texttt{formData}, \texttt{get\_json}, \texttt{headers}, \texttt{json}, \texttt{nextUrl}, \texttt{params}, \texttt{path\_params}, \texttt{query}, \texttt{query\_params}, \texttt{searchParams}, \texttt{text}, \texttt{values} \\
+parameters of entry points & all parameters of HTTP handlers and callbacks (Table~\ref{tab:app-entry}), except \texttt{cls}, \texttt{ctx\_next}, \texttt{next}, \texttt{reply}, \texttt{res}, \texttt{resp}, \texttt{response}, \texttt{self} and parameters provided by \texttt{Depends}, \texttt{Security} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{external (third party)}} \\
+calls & \texttt{aiohttp.request}, \texttt{axios}, \texttt{axios.delete}, \texttt{axios.get}, \texttt{axios.post}, \texttt{axios.put}, \texttt{axios.request}, \texttt{child\_process.execFileSync}, \texttt{child\_process.execSync}, \texttt{fetch}, \texttt{got}, \texttt{httpx.delete}, \texttt{httpx.get}, \texttt{httpx.patch}, \texttt{httpx.post}, \texttt{httpx.put}, \texttt{httpx.request}, \texttt{os.popen}, \texttt{requests.delete}, \texttt{requests.get}, \texttt{requests.head}, \texttt{requests.patch}, \texttt{requests.post}, \texttt{requests.put}, \texttt{requests.request}, \texttt{subprocess.check\_output}, \texttt{subprocess.Popen}, \texttt{subprocess.run}, \texttt{urllib.request.urlopen} \\
+file reads with a non-fixed path & \texttt{fs.promises.readFile}, \texttt{fs.readFile}, \texttt{fs.readFileSync}, \texttt{fs/promises.readFile}, \texttt{open}, \texttt{pandas.read\_csv}, \texttt{pandas.read\_excel}, \texttt{pandas.read\_json} \\
+web-search, scraping, loader, e-mail, chat, and issue-tracker clients (any method call, and objects they return) & \texttt{ArxivAPIWrapper}, \texttt{AsyncExa}, \texttt{AsyncFirecrawlApp}, \texttt{AsyncHtmlLoader}, \texttt{AsyncTavilyClient}, \texttt{AsyncWebClient}, \texttt{BingSearchAPIWrapper}, \texttt{BraveSearch}, \texttt{BraveSearchWrapper}, \texttt{CheerioWebBaseLoader}, \texttt{CSVLoader}, \texttt{DDGS}, \texttt{DirectoryLoader}, \texttt{Docx2txtLoader}, \texttt{DuckDuckGoSearchResults}, \texttt{DuckDuckGoSearchRun}, \texttt{DuckDuckGoSearchTool}, \texttt{Exa}, \texttt{Firecrawl}, \texttt{FirecrawlApp}, \texttt{FireCrawlLoader}, \texttt{Github}, \texttt{GoogleSearchAPIWrapper}, \texttt{GoogleSerperAPIWrapper}, \texttt{IMAP4}, \texttt{IMAP4\_SSL}, \texttt{LinkContentFetcher}, \texttt{PDFLoader}, \texttt{PlaywrightURLLoader}, \texttt{PuppeteerWebBaseLoader}, \texttt{PyPDFLoader}, \texttt{RecursiveUrlLoader}, \texttt{ScrapeWebsiteTool}, \texttt{SearxSearchWrapper}, \texttt{SerpAPIWrapper}, \texttt{SerperDevTool}, \texttt{SerperDevWebSearch}, \texttt{SimpleDirectoryReader}, \texttt{SitemapLoader}, \texttt{Stagehand}, \texttt{tavily}, \texttt{TavilyClient}, \texttt{TavilySearch}, \texttt{TavilySearchResults}, \texttt{TextLoader}, \texttt{UnstructuredFileLoader}, \texttt{UnstructuredURLLoader}, \texttt{VisitWebpageTool}, \texttt{WebBaseLoader}, \texttt{WebClient}, \texttt{WebResearchRetriever}, \texttt{WebSearchTool}, \texttt{WikipediaAPIWrapper} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{database (whoever wrote the data)}} \\
+read methods & \texttt{\$queryRaw}, \texttt{\$queryRawUnsafe}, \texttt{fetchall}, \texttt{fetchmany}, \texttt{fetchone}, \texttt{findAll}, \texttt{findAndCount}, \texttt{findBy}, \texttt{findById}, \texttt{findByPk}, \texttt{findFirst}, \texttt{findFirstOrThrow}, \texttt{findMany}, \texttt{findOne}, \texttt{findOneBy}, \texttt{findUnique}, \texttt{findUniqueOrThrow}, \texttt{getMany}, \texttt{getOne}, \texttt{getRawMany}, \texttt{getRawOne} \\
+session methods & \texttt{exec}, \texttt{execute}, \texttt{get}, \texttt{get\_one}, \texttt{query}, \texttt{scalar}, \texttt{scalars} on objects named \texttt{async\_session}, \texttt{conn}, \texttt{connection}, \texttt{cursor}, \texttt{db}, \texttt{db\_session}, \texttt{sess}, \texttt{session} \\
+generic methods (only on a query, session, or result object) & \texttt{aggregate}, \texttt{all}, \texttt{first}, \texttt{get}, \texttt{groupBy}, \texttt{one}, \texttt{one\_or\_none}, \texttt{scalar}, \texttt{scalar\_one}, \texttt{scalar\_one\_or\_none}, \texttt{scalars}, \texttt{values}; on a call to \texttt{distinct}, \texttt{exec}, \texttt{execute}, \texttt{filter}, \texttt{filter\_by}, \texttt{from\_statement}, \texttt{group\_by}, \texttt{join}, \texttt{limit}, \texttt{offset}, \texttt{options}, \texttt{order\_by}, \texttt{orderBy}, \texttt{prepare}, \texttt{query}, \texttt{raw}, \texttt{scalars}, \texttt{select}, \texttt{where}, or on objects named \texttt{cur}, \texttt{cursor}, \texttt{qs}, \texttt{query}, \texttt{res}, \texttt{result}, \texttt{results}, \texttt{rows}, \texttt{statement}, \texttt{stmt} \\
+\end{longtable}
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.25\textwidth}>{\raggedright\arraybackslash}p{0.71\textwidth}@{}}
+\caption{Model sinks and model objects.}\label{tab:app-model}\\
+\toprule
+\textbf{Pattern group} & \textbf{Searched names} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Pattern group} & \textbf{Searched names (continued)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{model objects}} \\
+constructors and agent classes & \texttt{A2AClient}, \texttt{Agent}, \texttt{AgentExecutor}, \texttt{AgentRunner}, \texttt{AgentWorkflow}, \texttt{Anthropic}, \texttt{AssistantAgent}, \texttt{AsyncAnthropic}, \texttt{AsyncOpenAI}, \texttt{ChatAnthropic}, \texttt{ChatGoogleGenerativeAI}, \texttt{ChatOllama}, \texttt{ChatOpenAI}, \texttt{CodeAgent}, \texttt{ConversableAgent}, \texttt{ConversationChain}, \texttt{create\_react\_agent}, \texttt{create\_tool\_calling\_agent}, \texttt{createReactAgent}, \texttt{Crew}, \texttt{FunctionAgent}, \texttt{FunctionCallingAgentWorker}, \texttt{GoogleGenAI}, \texttt{GoogleGenerativeAI}, \texttt{GroupChatManager}, \texttt{initialize\_agent}, \texttt{initializeAgentExecutorWithOptions}, \texttt{LlmAgent}, \texttt{LLMChain}, \texttt{ManagedAgent}, \texttt{OpenAI}, \texttt{OpenAIAgent}, \texttt{ReActAgent}, \texttt{RequirementAgent}, \texttt{ToolCallingAgent}, \texttt{UserProxyAgent} \\
+agent and chain factories & \texttt{create\_deep\_agent}, \texttt{createAgent}, \texttt{createDeepAgent}, \texttt{from\_agent\_and\_tools}, \texttt{from\_chain\_type}, \texttt{from\_llm}, \texttt{from\_tools}, \texttt{getAgent}, \texttt{load\_qa\_chain}, \texttt{load\_summarize\_chain}, \texttt{resolve\_llm}; any function matching \texttt{\textasciicircum{}(create\_\textbackslash{}w*\_(agent|chain)|create\textbackslash{}w*(Agent|Chain))\$} \\
+declared types (also through type aliases) & \texttt{AnthropicBedrock}, \texttt{AnthropicVertex}, \texttt{AsyncAzureOpenAI}, \texttt{AzureOpenAI}, \texttt{BaseChain}, \texttt{BaseChatModel}, \texttt{BaseLanguageModel}, \texttt{BaseLLM}, \texttt{Chain}, \texttt{ChatModel}, \texttt{CompiledGraph}, \texttt{CompiledStateGraph}, \texttt{GenerativeModel}, \texttt{LLM}, \texttt{Runnable}, \texttt{RunnableBinding}, \texttt{RunnableSequence}, \texttt{RunnableSerializable}, \texttt{RunnableWithFallbacks}, \texttt{RunnableWithMessageHistory}, \texttt{SimpleChatModel} \\
+objects derived from a model & \texttt{bind}, \texttt{bind\_tools}, \texttt{bindTools}, \texttt{getGenerativeModel}, \texttt{with\_structured\_output}, \texttt{withStructuredOutput} \\
+engines derived from a store & \texttt{as\_chat\_engine}, \texttt{as\_query\_engine} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{model call}} \\
+SDK methods (call names ending with) & \texttt{chat.completions.create}, \texttt{completions.create}, \texttt{generateContent}, \texttt{generateContentStream}, \texttt{messages.create}, \texttt{models.generate\_content}, \texttt{responses.create} \\
+SDK functions & \texttt{@openai/agents.run}, \texttt{agents.Runner.run}, \texttt{agents.Runner.run\_streamed}, \texttt{agents.Runner.run\_sync}, \texttt{ai.generateObject}, \texttt{ai.generateText}, \texttt{ai.streamObject}, \texttt{ai.streamText}, \texttt{litellm.acompletion}, \texttt{litellm.completion}, \texttt{ollama.chat}, \texttt{ollama.generate} \\
+invocation methods on model objects & \texttt{a\_initiate\_chat}, \texttt{a\_initiate\_chats}, \texttt{achat}, \texttt{agenerate}, \texttt{ainvoke}, \texttt{akickoff}, \texttt{aquery}, \texttt{arun}, \texttt{astream}, \texttt{astream\_chat}, \texttt{call}, \texttt{chat}, \texttt{generate}, \texttt{initiate\_chat}, \texttt{initiate\_chats}, \texttt{invoke}, \texttt{kickoff}, \texttt{kickoff\_async}, \texttt{predict}, \texttt{query}, \texttt{run}, \texttt{run\_stream}, \texttt{run\_sync}, \texttt{send\_message}, \texttt{send\_message\_streaming}, \texttt{send\_task}, \texttt{sendMessage}, \texttt{sendMessageStream}, \texttt{stream}, \texttt{stream\_chat} \\
+traced arguments & positional arguments and \texttt{content}, \texttt{contents}, \texttt{input}, \texttt{inputs}, \texttt{message}, \texttt{messages}, \texttt{prompt}, \texttt{query}, \texttt{question}, \texttt{task}; \texttt{instructions}, \texttt{system} as system role; all arguments when none of these are present \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{instructions and history}} \\
+instruction arguments & \texttt{backstory}, \texttt{goal}, \texttt{instructions}, \texttt{prompt}, \texttt{role}, \texttt{system\_message}, \texttt{system\_prompt}, \texttt{systemMessage}, \texttt{systemPrompt}, on model constructors and agent factories \\
+history methods (on containers sent to a model) & \texttt{add\_ai\_message}, \texttt{add\_message}, \texttt{add\_user\_message}, \texttt{addAIMessage}, \texttt{addMessage}, \texttt{addUserMessage}, \texttt{append}, \texttt{extend}, \texttt{insert}, \texttt{push}, \texttt{unshift} \\
+prompt templates & \texttt{ainvoke}, \texttt{format}, \texttt{format\_messages}, \texttt{format\_prompt}, \texttt{invoke} \\
+\end{longtable}
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.25\textwidth}>{\raggedright\arraybackslash}p{0.71\textwidth}@{}}
+\caption{Tool sinks and tool effects.}\label{tab:app-tools}\\
+\toprule
+\textbf{Pattern group} & \textbf{Searched names} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Pattern group} & \textbf{Searched names (continued)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{tools}} \\
+decorators & \texttt{createTool}, \texttt{function\_tool}, \texttt{registerTool}, \texttt{tool} \\
+factories and registrations & \texttt{DynamicStructuredTool}, \texttt{DynamicTool}, \texttt{from\_defaults}, \texttt{from\_function}, \texttt{FunctionTool}, \texttt{StructuredTool}, with the function passed as argument or as \texttt{callback}, \texttt{coroutine}, \texttt{execute}, \texttt{fn}, \texttt{func}, \texttt{function}, \texttt{handler} \\
+tool lists & arguments \texttt{functions}, \texttt{tools} of agent constructors \\
+parameters not set by the model & \texttt{callbacks}, \texttt{cls}, \texttt{config}, \texttt{context}, \texttt{ctx}, \texttt{extra}, \texttt{options}, \texttt{run\_context}, \texttt{run\_manager}, \texttt{runContext}, \texttt{self} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{effects (recorded when the model controls the argument)}} \\
+command and code execution (\texttt{exec}) & \texttt{\_\_import\_\_}, \texttt{asyncio.create\_subprocess\_exec}, \texttt{asyncio.create\_subprocess\_shell}, \texttt{child\_process.exec}, \texttt{child\_process.execFile}, \texttt{child\_process.execFileSync}, \texttt{child\_process.execSync}, \texttt{child\_process.fork}, \texttt{child\_process.spawn}, \texttt{child\_process.spawnSync}, \texttt{eval}, \texttt{exec}, \texttt{execa}, \texttt{Function}, \texttt{importlib.import\_module}, \texttt{numexpr.evaluate}, \texttt{os.execv}, \texttt{os.execvp}, \texttt{os.popen}, \texttt{os.system}, \texttt{pty.spawn}, \texttt{subprocess.call}, \texttt{subprocess.check\_call}, \texttt{subprocess.check\_output}, \texttt{subprocess.getoutput}, \texttt{subprocess.getstatusoutput}, \texttt{subprocess.Popen}, \texttt{subprocess.run}, \texttt{vm.runInNewContext}, \texttt{vm.runInThisContext} \\
+file system (\texttt{fs}) & \texttt{fs.appendFile}, \texttt{fs.appendFileSync}, \texttt{fs.promises.readFile}, \texttt{fs.promises.writeFile}, \texttt{fs.readdir}, \texttt{fs.readdirSync}, \texttt{fs.readFile}, \texttt{fs.readFileSync}, \texttt{fs.rm}, \texttt{fs.rmSync}, \texttt{fs.unlink}, \texttt{fs.unlinkSync}, \texttt{fs.writeFile}, \texttt{fs.writeFileSync}, \texttt{fs/promises.readFile}, \texttt{fs/promises.writeFile}, \texttt{open}, \texttt{os.listdir}, \texttt{os.remove}, \texttt{os.rename}, \texttt{os.rmdir}, \texttt{os.unlink}, \texttt{read\_text}, \texttt{shutil.copy}, \texttt{shutil.copyfile}, \texttt{shutil.copytree}, \texttt{shutil.move}, \texttt{shutil.rmtree}, \texttt{unlink}, \texttt{write\_text} \\
+network (\texttt{net}) & \texttt{aiohttp.request}, \texttt{axios}, \texttt{axios.delete}, \texttt{axios.get}, \texttt{axios.post}, \texttt{axios.put}, \texttt{axios.request}, \texttt{fetch}, \texttt{got}, \texttt{httpx.delete}, \texttt{httpx.get}, \texttt{httpx.patch}, \texttt{httpx.post}, \texttt{httpx.put}, \texttt{httpx.request}, \texttt{requests.delete}, \texttt{requests.get}, \texttt{requests.head}, \texttt{requests.patch}, \texttt{requests.post}, \texttt{requests.put}, \texttt{requests.request}, \texttt{sendmail}, \texttt{urllib.request.urlopen} \\
+database (\texttt{db}) & \texttt{execute}, \texttt{executemany}, \texttt{executescript} \\
+traced arguments & the first positional argument and \texttt{args}, \texttt{body}, \texttt{cmd}, \texttt{command}, \texttt{data}, \texttt{file}, \texttt{json}, \texttt{path}, \texttt{url} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{dispatch}} \\
+model-selected function & \texttt{X[selector](...)} and \texttt{getattr(obj, selector)(...)} with a selector derived from model output \\
+\end{longtable}
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.25\textwidth}>{\raggedright\arraybackslash}p{0.71\textwidth}@{}}
+\caption{Stores: vector stores and agent memory.}\label{tab:app-stores}\\
+\toprule
+\textbf{Pattern group} & \textbf{Searched names} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Pattern group} & \textbf{Searched names (continued)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{store objects}} \\
+classes and clients & \texttt{AsyncPostgresStore}, \texttt{AsyncZep}, \texttt{BufferMemory}, \texttt{ChatMessageHistory}, \texttt{Chroma}, \texttt{ChromaClient}, \texttt{connect\_to\_custom}, \texttt{connect\_to\_local}, \texttt{connect\_to\_weaviate\_cloud}, \texttt{ConversationBufferMemory}, \texttt{EphemeralClient}, \texttt{FAISS}, \texttt{FaissStore}, \texttt{HNSWLib}, \texttt{InMemoryStore}, \texttt{LanceDB}, \texttt{Memory}, \texttt{MemoryClient}, \texttt{MemoryVectorStore}, \texttt{Milvus}, \texttt{MilvusClient}, \texttt{PersistentClient}, \texttt{PGVector}, \texttt{PGVectorStore}, \texttt{Pinecone}, \texttt{PineconeStore}, \texttt{PineconeVectorStore}, \texttt{PostgresStore}, \texttt{Qdrant}, \texttt{QdrantClient}, \texttt{QdrantVectorStore}, \texttt{RedisStore}, \texttt{RedisVectorStore}, \texttt{SupabaseVectorStore}, \texttt{VectorStoreIndex}, \texttt{Weaviate}, \texttt{WeaviateStore}, \texttt{Zep}, \texttt{ZepClient} \\
+declared types & \texttt{BaseChatMessageHistory}, \texttt{BaseMemory}, \texttt{BaseRetriever}, \texttt{BaseStore}, \texttt{VectorStore}, \texttt{VectorStoreRetriever} \\
+factories & \texttt{from\_client}, \texttt{from\_documents}, \texttt{from\_existing\_index}, \texttt{from\_texts}, \texttt{from\_vector\_store}, \texttt{fromDocuments}, \texttt{fromExistingCollection}, \texttt{fromExistingIndex}, \texttt{fromTexts}, \texttt{load}, \texttt{load\_local} \\
+collections, indexes, and retrievers derived from a store & \texttt{as\_retriever}, \texttt{asRetriever}, \texttt{Collection}, \texttt{collection}, \texttt{create\_collection}, \texttt{createCollection}, \texttt{get\_collection}, \texttt{get\_or\_create\_collection}, \texttt{getCollection}, \texttt{getOrCreateCollection}, \texttt{index}, \texttt{Index} \\
+sub-interfaces of a store & \texttt{collections}, \texttt{data}, \texttt{documents}, \texttt{graph}, \texttt{memory}, \texttt{points}, \texttt{query}, \texttt{thread} \\
+store identity & where the store object is created, otherwise a literal \texttt{collection\_name}, \texttt{collectionName}, \texttt{index\_name}, \texttt{indexName}, \texttt{namespace}, \texttt{table\_name}, \texttt{tableName} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{store write}} \\
+methods & \texttt{aadd\_memory}, \texttt{add}, \texttt{add\_ai\_message}, \texttt{add\_documents}, \texttt{add\_memory}, \texttt{add\_message}, \texttt{add\_messages}, \texttt{add\_object}, \texttt{add\_texts}, \texttt{add\_user\_message}, \texttt{addAIMessage}, \texttt{addDocuments}, \texttt{addMemory}, \texttt{addMessage}, \texttt{addMessages}, \texttt{addUserMessage}, \texttt{addVectors}, \texttt{aput}, \texttt{insert}, \texttt{insert\_many}, \texttt{insertMany}, \texttt{put}, \texttt{save\_context}, \texttt{saveContext}, \texttt{store\_conversation}, \texttt{upload\_collection}, \texttt{upload\_points}, \texttt{upload\_records}, \texttt{uploadRecords}, \texttt{upsert}, \texttt{upsert\_records}, \texttt{upsertRecords} \\
+constructors that also write & \texttt{from\_documents}, \texttt{from\_texts}, \texttt{fromDocuments}, \texttt{fromTexts} \\
+traced arguments & all positional arguments; content \texttt{content}, \texttt{data}, \texttt{docs}, \texttt{documents}, \texttt{inputs}, \texttt{messages}, \texttt{outputs}, \texttt{text}, \texttt{texts}; metadata \texttt{metadata}, \texttt{metadatas} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{store query (its result is the source store\_read)}} \\
+methods & \texttt{aget}, \texttt{aget\_relevant\_documents}, \texttt{ainvoke}, \texttt{amax\_marginal\_relevance\_search}, \texttt{aretrieve}, \texttt{asearch}, \texttt{asearch\_memory}, \texttt{asimilarity\_search}, \texttt{bm25}, \texttt{fetch}, \texttt{fetch\_objects}, \texttt{fetchObjects}, \texttt{get}, \texttt{get\_all}, \texttt{get\_relevant\_documents}, \texttt{get\_user\_context}, \texttt{getMessages}, \texttt{getRelevantDocuments}, \texttt{hybrid}, \texttt{invoke}, \texttt{load\_memory\_variables}, \texttt{loadMemoryVariables}, \texttt{max\_marginal\_relevance\_search}, \texttt{maxMarginalRelevanceSearch}, \texttt{near\_text}, \texttt{near\_vector}, \texttt{nearText}, \texttt{nearVector}, \texttt{query}, \texttt{query\_points}, \texttt{retrieve}, \texttt{scroll}, \texttt{search}, \texttt{search\_memory}, \texttt{searchMemory}, \texttt{similarity\_search}, \texttt{similarity\_search\_by\_vector}, \texttt{similarity\_search\_with\_score}, \texttt{similaritySearch}, \texttt{similaritySearchWithScore} \\
+traced arguments & the first positional argument; query \texttt{input}, \texttt{query}, \texttt{query\_embeddings}, \texttt{query\_text}, \texttt{query\_texts}, \texttt{queryTexts}, \texttt{question}, \texttt{text}, \texttt{vector}; filter \texttt{filter}, \texttt{filters}, \texttt{where} \\
+\end{longtable}
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.25\textwidth}>{\raggedright\arraybackslash}p{0.71\textwidth}@{}}
+\caption{Entry points and heuristic detection.}\label{tab:app-entry}\\
+\toprule
+\textbf{Pattern group} & \textbf{Searched names} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Pattern group} & \textbf{Searched names (continued)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{entry points (their parameters are user input)}} \\
+route decorators & \texttt{@app.<method>(...)} with method \texttt{all}, \texttt{api\_route}, \texttt{delete}, \texttt{get}, \texttt{patch}, \texttt{post}, \texttt{put}, \texttt{route}, \texttt{websocket}; \texttt{All}, \texttt{Delete}, \texttt{Get}, \texttt{Patch}, \texttt{Post}, \texttt{Put} \\
+JavaScript/TypeScript routes & \texttt{app.<method>(path, handler)} with the methods above; Next.js route files exporting \texttt{DELETE}, \texttt{GET}, \texttt{PATCH}, \texttt{POST}, \texttt{PUT} \\
+callbacks & \texttt{question}; \texttt{.on(event, handler)} with event \texttt{chat}, \texttt{chat message}, \texttt{input}, \texttt{line}, \texttt{message} \\
+\addlinespace[3pt]\multicolumn{2}{@{}l}{\emph{heuristic model calls}} \\
+framework packages & \texttt{@ai-sdk}, \texttt{@anthropic-ai}, \texttt{@google/genai}, \texttt{@google/generative-ai}, \texttt{@langchain}, \texttt{@llamaindex}, \texttt{@mastra}, \texttt{@openai/agents}, \texttt{agents}, \texttt{ai}, \texttt{anthropic}, \texttt{autogen}, \texttt{cohere}, \texttt{crewai}, \texttt{dspy}, \texttt{google.genai}, \texttt{google.generativeai}, \texttt{groq}, \texttt{haystack}, \texttt{instructor}, \texttt{langchain}, \texttt{langgraph}, \texttt{litellm}, \texttt{llama\_index}, \texttt{llamaindex}, \texttt{mistralai}, \texttt{ollama}, \texttt{openai}, \texttt{pydantic\_ai}, \texttt{semantic\_kernel}, \texttt{smolagents} \\
+invocation methods & the methods of Table~\ref{tab:app-model}, on any object created from these packages \\
+excluded creators & \texttt{Document}, \texttt{END}, \texttt{MessagesState}, \texttt{Settings}, \texttt{START}, \texttt{tool}; names ending with \texttt{Callback}, \texttt{Client}, \texttt{Config}, \texttt{Document}, \texttt{Embedding}, \texttt{Embeddings}, \texttt{Handler}, \texttt{History}, \texttt{Index}, \texttt{Loader}, \texttt{Memory}, \texttt{Message}, \texttt{Messages}, \texttt{Parser}, \texttt{Placeholder}, \texttt{Reader}, \texttt{Retriever}, \texttt{Splitter}, \texttt{Store}, \texttt{Template}, \texttt{Tool}, \texttt{Toolkit} \\
+\end{longtable}
+
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.25\textwidth}>{\raggedright\arraybackslash}p{0.71\textwidth}@{}}
+\caption{Tracing: limits, pass-through functions, and skipped files.}\label{tab:app-tracing}\\
+\toprule
+\textbf{Pattern group} & \textbf{Searched names} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Pattern group} & \textbf{Searched names (continued)} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+limits & at most 5 function boundaries and 20{,}000 visited syntax nodes per traced input \\
+functions that pass data through & \texttt{Array.from}, \texttt{decodeURIComponent}, \texttt{dict}, \texttt{encodeURIComponent}, \texttt{json.dumps}, \texttt{json.loads}, \texttt{JSON.parse}, \texttt{JSON.stringify}, \texttt{json\_repair.loads}, \texttt{json\_repair.repair\_json}, \texttt{list}, \texttt{numexpr.evaluate}, \texttt{Object.assign}, \texttt{Object.entries}, \texttt{Object.values}, \texttt{re.findall}, \texttt{re.fullmatch}, \texttt{re.match}, \texttt{re.search}, \texttt{re.split}, \texttt{re.sub}, \texttt{repr}, \texttt{reversed}, \texttt{set}, \texttt{sorted}, \texttt{str}, \texttt{String}, \texttt{textwrap.dedent}, \texttt{tuple} \\
+methods that pass data through & \texttt{at}, \texttt{capitalize}, \texttt{concat}, \texttt{copy}, \texttt{decode}, \texttt{dict}, \texttt{dropna}, \texttt{encode}, \texttt{entries}, \texttt{every}, \texttt{fillna}, \texttt{filter}, \texttt{find}, \texttt{findLast}, \texttt{flat}, \texttt{flatMap}, \texttt{format}, \texttt{format\_map}, \texttt{format\_messages}, \texttt{format\_prompt}, \texttt{get}, \texttt{getTime}, \texttt{group}, \texttt{groupdict}, \texttt{groups}, \texttt{includes}, \texttt{isoformat}, \texttt{items}, \texttt{join}, \texttt{json}, \texttt{keys}, \texttt{lower}, \texttt{lstrip}, \texttt{map}, \texttt{model\_copy}, \texttt{model\_dump}, \texttt{model\_dump\_json}, \texttt{padEnd}, \texttt{padStart}, \texttt{partial}, \texttt{pop}, \texttt{read}, \texttt{readline}, \texttt{readlines}, \texttt{replace}, \texttt{resolvedOptions}, \texttt{reverse}, \texttt{rstrip}, \texttt{slice}, \texttt{some}, \texttt{sort}, \texttt{split}, \texttt{splitlines}, \texttt{strftime}, \texttt{strip}, \texttt{sub}, \texttt{substring}, \texttt{text}, \texttt{then}, \texttt{timestamp}, \texttt{title}, \texttt{to\_dict}, \texttt{to\_list}, \texttt{to\_messages}, \texttt{to\_string}, \texttt{toISOString}, \texttt{toJSON}, \texttt{tolist}, \texttt{toLocaleDateString}, \texttt{toLocaleString}, \texttt{toLocaleTimeString}, \texttt{toLowerCase}, \texttt{toString}, \texttt{toUpperCase}, \texttt{trim}, \texttt{trimEnd}, \texttt{trimStart}, \texttt{upper}, \texttt{values} \\
+wrappers that pass data through & \texttt{AIMessage}, \texttt{AIMessagePromptTemplate}, \texttt{bool}, \texttt{Boolean}, \texttt{ChatMessage}, \texttt{ChatPromptTemplate}, \texttt{compact}, \texttt{create\_documents}, \texttt{Date}, \texttt{DateTimeFormat}, \texttt{deepcopy}, \texttt{Document}, \texttt{enumerate}, \texttt{Field}, \texttt{float}, \texttt{from\_messages}, \texttt{from\_orm}, \texttt{from\_template}, \texttt{FunctionMessage}, \texttt{gather}, \texttt{HumanMessage}, \texttt{HumanMessagePromptTemplate}, \texttt{int}, \texttt{iter}, \texttt{MessagesPlaceholder}, \texttt{model\_construct}, \texttt{model\_validate}, \texttt{model\_validate\_json}, \texttt{next}, \texttt{now}, \texttt{Number}, \texttt{parse\_obj}, \texttt{parse\_raw}, \texttt{PromptTemplate}, \texttt{Set}, \texttt{split\_documents}, \texttt{split\_text}, \texttt{SystemMessage}, \texttt{SystemMessagePromptTemplate}, \texttt{today}, \texttt{ToolMessage}, \texttt{transform\_documents}, \texttt{utcnow}, \texttt{wait\_for}, \texttt{zip} \\
+forwarders (call the function they receive) & \texttt{run\_in\_executor}, \texttt{submit}, \texttt{to\_thread} \\
+skipped folders & \texttt{\_\_mocks\_\_}, \texttt{\_\_pycache\_\_}, \texttt{\_\_tests\_\_}, \texttt{bower\_components}, \texttt{build}, \texttt{coverage}, \texttt{dist}, \texttt{docs}, \texttt{e2e}, \texttt{env}, \texttt{fixtures}, \texttt{migrations}, \texttt{node\_modules}, \texttt{site-packages}, \texttt{test}, \texttt{testing}, \texttt{tests}, \texttt{third\_party}, \texttt{vendor}, \texttt{venv}, \texttt{website}, and folders starting with a dot \\
+skipped files & \texttt{.d.ts}, \texttt{.min.js}, and JavaScript/TypeScript files over 1\,MB \\
+\end{longtable}
+
+}

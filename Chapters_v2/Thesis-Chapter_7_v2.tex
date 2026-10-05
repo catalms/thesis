@@ -1,0 +1,51 @@
+% #############################################################################
+% This is Chapter 7
+% !TEX root = ../main.tex
+% #############################################################################
+\fancychapter{Discussion}
+% The following line allows to ref this chapter
+\label{chap:discussion}
+
+This chapter interprets the results of Chapter~\ref{chap:results}, discusses what they imply for developers and framework designers, states the threats to the validity of the study, and relates it to prior work.
+
+% =============================================================================
+\section{Interpretation}
+\label{sec:disc-interpretation}
+
+\paragraph{The instructions are protected, the context is not.} Developers largely keep instructions to the model under their own control: agent instructions and system messages are mostly written as constants. The exposure lies in what the model is given to read. Content from end users, web pages, databases, and tools reaches model calls in a large share of the applications, and in roughly a quarter of them the model reads content that no user typed. Because a model does not reliably distinguish instructions from data (Section~\ref{sec:surface}), a static system prompt alone does not protect these applications.
+
+\paragraph{Tools are where exposure turns into action.} Tools play two roles in the results. They are the main channel through which external content enters an application, more often than any other sink type and, in a smaller number of applications, they let the model act on the environment with arguments it chooses: running commands, touching files, sending requests, querying databases. The combination of both roles in the same application (16.4\% of applications with tools) is the concrete shape of the attack chains described in Chapter~\ref{chap:back}: content read by one tool steers the model to misuse another.
+
+\paragraph{Memory poisoning is hard to see statically.} Almost half of the applications with stores write untrusted content into them, but complete write--read--model chains are rarely observable. The main reason is architectural, many applications read from stores that are filled by separate ingestion scripts or services, outside the repository or outside the code paths the analysis can connect. The low prevalence of complete chains should therefore not be read as evidence that memory poisoning is rare; it reflects that the preconditions are split across components that a single-repository analysis cannot join.
+
+\paragraph{Structure and data flow tell different stories.} The pattern-based analysis of Chapter~\ref{chap:implement} records whether an application has a component, such as a store or a tool; the data-flow analysis records what reaches it. The two views can diverge: an application may have a store that only ever receives developer-curated content, or tools whose effects operate on fixed paths. Having a component is therefore not the same as being exposed through it, which is why this thesis reports exposure from the data flows.
+
+% =============================================================================
+\section{Implications}
+\label{sec:disc-implications}
+
+For \emph{developers}, the results suggest where scrutiny pays off most: every tool that fetches outside content, and every tool whose parameters reach commands, files, or network requests. Keeping these capabilities in separate applications or agents, or placing a confirmation step between them, breaks the combination that makes indirect injection consequential. For \emph{framework designers}, the results show that much of the exposure arises inside patterns the frameworks themselves promote---tools that return raw web content, retrieval that feeds the context directly---which makes framework-level defaults, such as marking retrieved and tool content as untrusted, a lever with wide reach. For \emph{researchers}, the prevalence figures indicate which of the defenses reviewed in Chapter~\ref{chap:back}, such as information-flow control and tool-use validation, address the most common exposure in practice.
+
+% =============================================================================
+\section{Threats to Validity}
+\label{sec:disc-threats}
+
+\paragraph{Construct validity.} The study measures exposure, not exploitability. A risk pattern shows that the data flow an attack requires exists in the code; it does not show that sanitization is absent, that the model would follow injected instructions, or that the affected functionality is reachable in a deployment. Some source definitions are deliberately broad---files read from a non-fixed path count as external content, and command-line arguments as user input---which can overstate exposure in applications whose file reads are local.
+
+\paragraph{Internal validity.} The analyses are static and approximate. Recall of model-call detection is 57\% with confirmed rules and 81\% including heuristics (Section~\ref{sec:res-rq4}), and a share of inputs remains undetermined; for both reasons, prevalence figures are lower bounds. Heuristic detections may include false positives, which is why they are reported only as an upper bound. On a random sample of 86 findings, 88\% of the reported sinks were real, and the errors in their sources were mostly omissions rather than false information; the sample is small, was judged by a single reviewer, and contains several similar findings from the same repositories, so these rates carry considerable uncertainty. False sinks came mainly from functions of non-AI plugin systems mistaken for tools and from test files located next to the source code; the latter are excluded from the reported results. The known blind spots of the data-flow analysis are listed in Section~\ref{sec:df-limitations}. The most consequential concerns tools: effects are only detected in the body of a tool, so when a tool passes the model's input to a helper function that executes a command, accesses files, or sends it to an external service, the effect is missed. The tool-effect counts and the tool risk combination are therefore lower bounds, and the true share of applications in which the model can act on its environment is likely higher than reported. The application-versus-framework classification relies on LLM judges with low agreement (Section~\ref{sec:crawling}), mitigated by manual adjudication.
+
+\paragraph{External validity.} RADAR covers popular open-source applications on GitHub written in Python and JavaScript/TypeScript, collected at a single point in time (Section~\ref{sec:limitations}). Closed-source and enterprise agents, other languages, and less popular projects may differ. The data-flow results additionally refer to a subset of 381 of the 516 applications, of which 379 could be analysed (Section~\ref{sec:dataflow-subset}).
+
+\paragraph{Reliability.} Both analyses, the dataset, and the per-repository results are released \todo{link}, and every finding records the file, line, and trace that produced it, so that individual results can be checked and the study repeated.
+
+% =============================================================================
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Attacks and taxonomies.} Prompt injection against LLM-integrated applications was demonstrated by Greshake et al.~\cite{greshake}, and subsequent work extended it to tools, memory, and multi-agent settings (Chapter~\ref{chap:back}). The OWASP Top 10 for LLM Applications~\cite{owasp} and MITRE ATLAS~\cite{mitre-atlas} catalogue these threats, and Kim et al.~\cite{kim2026sok} consolidate them into the attack vectors and risks that this thesis operationalizes.
+
+\paragraph{Benchmarks.} AgentDojo~\cite{agentdojo} and Agent Security Bench~\cite{asb} measure how often attacks succeed against agents in controlled environments. They answer how vulnerable agents are \emph{when} exposed; this thesis complements them by measuring how often real applications \emph{are} exposed.
+
+\paragraph{Defenses.} Information-flow control~\cite{debenedetti2025camel,costa2025fides}, guardrails~\cite{llamafirewall,xiang2024guardagent}, and privilege control~\cite{shi2025progent} target precisely the data flows measured here; our results indicate where in real applications such mechanisms would apply.
+
+\paragraph{Empirical studies of LLM applications.} Closest to our approach, LLMSmith~\cite{liu2024llmsmith} uses static analysis to find call chains from LLM output to code execution in LLM-integrated frameworks and confirms the resulting vulnerabilities in applications by exploitation. It targets one consequence, remote code execution, in depth; we measure a broader set of attack preconditions across a whole corpus without exploitation. Other studies examine the LLM application ecosystem from outside the code: Hou et al.~\cite{hou2024llmappstores} analyse hundreds of thousands of apps in LLM app stores for abusive, malicious, and vulnerable behaviour, and Shifat et al.~\cite{shifat2026advisories} study how LLM-related vulnerabilities are reported in GitHub security advisories. To our knowledge, no prior work measures how often untrusted data reaches the models, tools, and stores of open-source agentic applications at the level of their source code.

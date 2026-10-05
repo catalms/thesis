@@ -1,0 +1,497 @@
+% #############################################################################
+% This is Chapter 5
+% !TEX root = ../main.tex
+% #############################################################################
+% Change the Name of the Chapter i the following line
+\fancychapter{The Analysis Toolkit}
+% The following line allows to ref this chapter
+\label{sec:toolkit}
+
+The toolkit computes each metadata field of Section~\ref{sec:metadata-format}
+with a dedicated detector built on the shared AST/regex front end of
+Section~\ref{sec:extraction-methodology} and a small library of signature
+sets: \emph{source} APIs that introduce external data, \emph{sink} APIs that
+act on the environment, and per-category \emph{capability} signatures (file
+system, network, execution, authentication, data query). Boolean and count
+fields are read directly from matched sites. Relational fields
+(\texttt{rag\_writers}, \texttt{shared\_across\_agents}) are resolved over a
+lightweight call graph that maps each store and tool to the agent that owns
+it. A few fields are \emph{derived} from others---\texttt{execution\_capable}
+from \texttt{tool\_categories}---with the consistency checks of
+Section~\ref{sec:extraction-methodology} guarding against disagreement.
+Two flow-sensitive fields, \texttt{unsanitized\_writes} and
+\texttt{rag\_influences\_actions}, require a coarse taint check from an
+untrusted source to the relevant sink. Table~\ref{tab:detectors} lists, for
+every field, its type and the concrete signal used to detect it; where the
+automated signal is ambiguous, the field falls back to the manual review of
+Section~\ref{sec:extraction-methodology}. The final column records the
+risk (R1--R7) or defence class each signal bears on, linking every
+measurement back to the taxonomy of Section~\ref{sec:overview} and to the
+prevalence analysis that follows.
+
+
+
+% #############################################################################
+% This is Chapter 5
+% !TEX root = ../main.tex
+% #############################################################################
+\providecommand{\pv}[1]{\textcolor{blue}{#1}} % provisional number: update from the final run
+\fancychapter{Data-Flow Analysis}
+% The following line allows to ref this chapter
+\label{sec:toolkit}
+
+The metadata of Chapter~\ref{chap:implement} describes the \emph{structure} of an application: which agents, tools, and stores it contains. The attacks of Chapter~\ref{chap:back}, however, depend on \emph{data}: untrusted content that reaches a model, a tool, or a store and is then treated as instructions. This chapter describes the static data-flow analysis that measures where the inputs of an application's AI components come from. We first define sinks and sources (Section~\ref{sec:df-model}), then describe the architecture of the analysis (Section~\ref{sec:df-architecture}), the patterns it recognizes and why (Section~\ref{sec:df-recognition}), how it traces data (Section~\ref{sec:df-analysis}), and how traces become measurements (Section~\ref{sec:df-patterns}). We close with the validation method (Section~\ref{sec:df-validation}) and the limitations of the analysis (Section~\ref{sec:df-limitations}).
+
+% =============================================================================
+\section{Sources and Sinks}
+\label{sec:df-model}
+
+We use the source--sink formulation of static taint analysis~\cite{livshits2005,arzt2014flowdroid}. A \emph{sink} is a place in the code where data enters an AI component; a \emph{source} is where that data originates. The analysis is static: it reads the code and never executes it.
+
+\paragraph{Sinks.} Data enters an agentic application's AI components in three ways---through models, tools, and stores---which gives the sink categories and types of Table~\ref{tab:df-sinks}. The value returned by a store query---the retrieved content---is not a sink, because it is data coming \emph{out} of the store; it is treated as a source.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{4pt}
+\caption{Sink categories and types.}
+\label{tab:df-sinks}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.11\textwidth}>{\raggedright\arraybackslash}p{0.12\textwidth}>{\raggedright\arraybackslash}p{0.38\textwidth}>{\raggedright\arraybackslash}p{0.33\textwidth}@{}}
+\toprule
+\textbf{Category} & \textbf{Type} & \textbf{Data entering the component} & \textbf{Example} \\
+\midrule
+model & call & inputs of a call to a model or agent & \texttt{llm.invoke(prompt)}, \texttt{agent.run(q)} \\
+      & instructions & system prompt or instructions of an agent & \texttt{Agent(instructions=...)} \\
+      & history & a message added to a conversation later sent to a model & \texttt{messages.append(...)} \\
+\addlinespace[2pt]
+tool  & params & parameters of a function the model can call & \texttt{@tool def search(q)} \\
+      & effect & a command, file, network, or database operation inside a tool whose argument the model controls & \texttt{subprocess.run(cmd)} \\
+      & result & the value a tool returns to the model & \texttt{return page.text} \\
+      & dispatch & code in which model output selects the function to run & \texttt{TOOLS[name](**args)} \\
+\addlinespace[2pt]
+store & write & content written into a vector store or agent memory & \texttt{store.add\_texts(docs)} \\
+      & query & the query and filters sent to a store & \texttt{store.search(q)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Sources.} Each input of a sink is traced back to sources, grouped into eight classes by who controls the data (Table~\ref{tab:df-sources}). \emph{Primary} sources introduce data into the program; \emph{derived} sources are outputs of other sinks, so their own origin is found by continuing at the sink that produced them. For the risk analysis, \texttt{user}, \texttt{external}, and \texttt{database} are \emph{untrusted} (an outside party can control them), and \texttt{external}, \texttt{store\_read}, and \texttt{tool\_result} are \emph{indirect} (content the model reads without the end user typing it), the channel of indirect prompt injection (V1).
+
+\begin{table}[t]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{4pt}
+\caption{Source classes.}
+\label{tab:df-sources}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.14\textwidth}>{\raggedright\arraybackslash}p{0.20\textwidth}>{\raggedright\arraybackslash}p{0.58\textwidth}@{}}
+\toprule
+\textbf{Source} & \textbf{Controlled by} & \textbf{Examples} \\
+\midrule
+\texttt{constant} & developer & literals; prompt files in the repository read with a fixed path \\
+\texttt{config} & deployer & environment variables, configuration files \\
+\texttt{user} & end user & request bodies and parameters of HTTP handlers, chat inputs, command-line arguments \\
+\texttt{external} & third party & web requests; web-search, scraping, e-mail, chat, and issue-tracker clients; files read from a non-fixed path; command output \\
+\texttt{database} & whoever wrote the data & ORM and SQL reads \\
+\midrule
+\texttt{model} & the model & output of a model call; parameters of a tool \\
+\texttt{tool\_result} & depends on the tool & value returned by a tool called from application code \\
+\texttt{store\_read} & whoever wrote to the store & content retrieved from a vector store or memory \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Input classes.} From its sources, each input receives an \emph{input class}: \emph{static} if all sources are constants, \emph{deployment-fixed} if it depends only on constants and configuration, \emph{dynamic} if at least one source is determined at run time, and \emph{undetermined} if the trace could not be completed without finding a run-time source. The analysis never guesses a source it cannot see; undetermined inputs are reported as such.
+
+% =============================================================================
+\section{Architecture}
+\label{sec:df-architecture}
+
+Table~\ref{tab:df-architecture} lists the components of the analysis, in the order in which a repository passes through them, together with the main design decision behind each.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{4pt}
+\caption{Components of the data-flow analysis and the reasons for their design.}
+\label{tab:df-architecture}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.17\textwidth}>{\raggedright\arraybackslash}p{0.36\textwidth}>{\raggedright\arraybackslash}p{0.41\textwidth}@{}}
+\toprule
+\textbf{Component} & \textbf{Role} & \textbf{Design decision and reason} \\
+\midrule
+Acquisition & downloads each repository as a snapshot through the GitHub API and runs one analysis process per repository & The analysed commit is recorded, so every result can be reproduced; memory and time limits per process keep a single very large repository from stopping the corpus run. \\
+Parsing & parses Python with Python's \texttt{ast}~\cite{python-ast} and JavaScript/TypeScript with the TypeScript compiler~\cite{typescript} & Official parsers are exact; the TypeScript syntax tree is converted into Python's representation, so both languages share one analysis. \\
+Repository index & indexes files, imports (including monorepo packages and re-exports), functions, classes, and declared types & Calls are resolved the way the language resolves them---through imports, \texttt{self}, and class hierarchies---rather than by matching names across the repository, which would connect unrelated code. \\
+Pattern mapping & holds every library and framework name the analysis recognizes & Framework knowledge is kept apart from the analysis logic, so frameworks can be added without changing how data is traced. \\
+Object recognition & identifies models, agents, stores, external clients, and tools & A call counts as a sink only when its receiver is such an object, so generic method names (\texttt{run}, \texttt{add}, \texttt{search}) do not produce false sinks. \\
+Sink detection & finds the sinks of Table~\ref{tab:df-sinks} and their inputs & Every input is traced, including arguments that are not analysed further, so the output shows what was deliberately left out. \\
+Tracing & follows each input backwards to its sources & Bounded by five function boundaries and 20{,}000 visited syntax nodes per trace, which keeps the analysis tractable on large repositories. \\
+Output & writes one record per repository with every sink, input, source, and trace step & Each step carries its file, line, and code, so every aggregate number can be traced back to the code that produced it. \\
+Aggregation & computes tables, figures, reports, and validation samples & Kept separate from the analysis, so results can be recomputed without rescanning the corpus. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Recognition Patterns}
+\label{sec:df-recognition}
+
+Table~\ref{tab:df-recognition} summarizes the families of patterns the analysis recognizes, with representative examples and the reason for each. The patterns were compiled from the documentation of the frameworks in Table~\ref{tab:frameworks}, from the API tables of the pattern-based analysis (Chapter~\ref{chap:implement}), and from the misses found during validation; the complete list is given in an appendix.\todo[inline]{Add an appendix with the searched patterns (SEARCHED\_PATTERNS.md).} Two principles apply throughout. First, generic names count only in context: a method such as \texttt{add} or \texttt{search} is a store operation only on a recognized store object, and a method such as \texttt{all} or \texttt{first} is a database read only on a query, session, or result object (so that, for example, JavaScript's \texttt{Promise.all} is not mistaken for one). Second, objects are recognized not only from their constructors but also from factories and declared types, because many applications receive their models through dependency injection or build agents with factory functions.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\setlength{\tabcolsep}{4pt}
+\caption{Pattern families recognized by the analysis, with representative examples.}
+\label{tab:df-recognition}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.15\textwidth}>{\raggedright\arraybackslash}p{0.44\textwidth}>{\raggedright\arraybackslash}p{0.35\textwidth}@{}}
+\toprule
+\textbf{Family} & \textbf{Recognized} & \textbf{Why} \\
+\midrule
+Model objects & constructors of LLM clients and agents (\texttt{ChatOpenAI}, \texttt{Anthropic}, CrewAI and OpenAI Agents \texttt{Agent}, \texttt{CodeAgent}, \texttt{ConversableAgent}); agent and chain factories (\texttt{create\_react\_agent}, \texttt{createToolCallingAgent}); declared types (\texttt{BaseChatModel}); derived objects (\texttt{bind\_tools}, \texttt{as\_query\_engine}) & Calls on these objects are model sinks. Many applications create agents through factory functions or receive models through injection, not through a constructor. \\
+Model calls & SDK methods (\texttt{chat.completions.create}, \texttt{messages.create}); SDK functions (\texttt{generateText}, \texttt{streamText}); invocation methods on model objects (\texttt{invoke}, \texttt{run}, \texttt{kickoff}, \texttt{initiate\_chat}); agent-to-agent messages (\texttt{A2AClient.send\_message}) & Covers both direct SDK use and framework agents. \\
+Instructions & keyword arguments such as \texttt{system\_prompt}, \texttt{instructions}, \texttt{system\_message} & Text that the model treats with developer authority. \\
+Tools & decorators (\texttt{@tool}, \texttt{@function\_tool}, \texttt{@mcp.tool}); factories and registrations (\texttt{StructuredTool.from\_function}, \texttt{tool(\{execute\})}, \texttt{server.registerTool}); \texttt{tools=[...]} lists & Tool parameters are chosen by the model. \\
+Tool effects & \emph{exec}: \texttt{subprocess}, \texttt{eval}, \texttt{child\_process}; \emph{fs}: \texttt{open}, \texttt{fs.writeFile}, \texttt{shutil}; \emph{net}: \texttt{requests}, \texttt{fetch}, \texttt{axios}; \emph{db}: \texttt{execute} & The consequence classes of unauthorized actions and data leakage (R5, R6). \\
+Stores & vector-store and memory classes (Chroma, Qdrant, Pinecone, Weaviate, Mem0, Zep, LangGraph stores), their factories (\texttt{from\_documents}), collections and indexes derived from them, and sub-interfaces (\texttt{zep.memory}); write and read methods on these objects & Generic method names are meaningful only on store objects. \\
+Sources & \emph{config}: \texttt{os.getenv}, \texttt{process.env}; \emph{user}: request fields, parameters of HTTP handlers, chat inputs; \emph{external}: HTTP clients and web-search, scraping, e-mail, chat, and issue-tracker clients (and objects they return); \emph{database}: ORM and SQL reads & Determine who controls each input. \\
+Heuristic & invocation methods on any object created by a known LLM framework package & Catches agents of frameworks without a precise rule; reported separately. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Tracing}
+\label{sec:df-analysis}
+
+For every input of every sink, the analysis traces the value backwards through assignments, string formatting and concatenation, containers (lists, dictionaries, message objects), function parameters to the arguments at their call sites, return values of called functions, constants imported from other files, and attributes of objects and classes. When a trace stops without reaching a source, the reason is recorded (for example, a parameter of a function that is never called within the repository).
+
+Retrieved content is handled differently, because it comes out of a store rather than out of code. Writes and reads are linked when they refer to the same store object, and the retrieved content inherits the sources of the content written into that store. When no write is found in the repository---typically because the store is filled by a separate ingestion service---its origin is undetermined.
+
+\paragraph{Detection levels.} \emph{Confirmed} sinks are found by the precise patterns of Table~\ref{tab:df-recognition}; \emph{heuristic} sinks are invocations of other objects created by a known LLM framework, for which all arguments are traced. Confirmed results are the main results; results including heuristic sinks are an upper bound. Keeping the two apart lets us raise recall without mixing in the lower precision of the heuristic.
+
+\paragraph{Example.} In Listing~\ref{lst:df-example}, the parameter \texttt{file} of an MCP tool is model-controlled; it reaches \texttt{fs.readFileSync}, a file-system \emph{effect}; and the file's content is returned to the model, a tool \emph{result} with source \texttt{external}. A model manipulated through its input can thus read any file accessible to the server, and the content flows back into the model.
+
+\begin{lstlisting}[language=JavaScript, caption={An MCP tool whose model-controlled parameter reaches a file-system operation (illustrative).}, label={lst:df-example}]
+server.registerTool("read", { description: "read a file" }, async ({ file }) => {
+  return { content: [{ type: "text", text: fs.readFileSync(file, "utf8") }] };
+});
+\end{lstlisting}
+
+% =============================================================================
+\section{Measurements and Risk Patterns}
+\label{sec:df-patterns}
+
+All results are reported at the level of repositories: a repository counts once for a property, however often the property occurs in its code. Counting values instead would let a few very large repositories dominate the results. Each share is reported relative to the repositories in which the property can occur at all; for example, only repositories that call a model can pass untrusted content to a model.
+
+\paragraph{Sinks and inputs (RQ2).} For each sink type we report its prevalence and the input classes of its inputs, and for each source class which sink types it reaches. For source classes we also report \emph{reach}: the share of a source's occurrences that flow into at least one sink. Most occurrences of environment reads, file reads, and request fields lie in parts of an application that have nothing to do with AI, so reach is computed over \emph{AI-relevant code}: files that contain an AI sink, plus sources elsewhere that reach a sink.
+
+\paragraph{Risk patterns (RQ3).} Five patterns capture the preconditions of the attack vectors of Chapter~\ref{chap:back} (Table~\ref{tab:df-patterns}). A repository matches a pattern if it occurs at least once in its code. The patterns describe \emph{exposure}---the data flow an attack requires is present---not exploitability, since sanitization, authentication, and model behavior are not analysed.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{4pt}
+\caption{Risk patterns, the attack vectors (V) and risks (R) they are preconditions for, and the repositories they are reported relative to.}
+\label{tab:df-patterns}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.47\textwidth}>{\raggedright\arraybackslash}p{0.12\textwidth}>{\raggedright\arraybackslash}p{0.08\textwidth}>{\raggedright\arraybackslash}p{0.23\textwidth}@{}}
+\toprule
+\textbf{Pattern: a repository matches when\ldots} & \textbf{Vectors} & \textbf{Risks} & \textbf{Relative to} \\
+\midrule
+\emph{Untrusted to model}: user, external, or database content reaches a model call & V4, V1 & R2 & repositories with model calls \\
+\emph{Indirect to model}: external, retrieved, or tool content reaches a model call & V1 & R2, R3 & repositories with model calls \\
+\emph{Untrusted to instructions}: untrusted or indirect content reaches instructions or a system message & V1, V4 & R2 & repositories with model inputs \\
+\emph{Tool risk combination}: a tool returns external, database, or retrieved content, and a tool has a command or file-system effect & V1, V3 & R6 & repositories with tools \\
+\emph{Store poisoning chain}: untrusted content is written to a store whose retrieved content reaches a model call & V6 & R3, R6 & repositories with stores \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Validation}
+\label{sec:df-validation}
+
+\emph{Recall} is measured on manually inspected repositories: every model call is identified by hand, and we count how many the analysis finds. \emph{Precision} is measured on a random sample of findings, stratified by repository: for each sampled input we check whether the sink is real and whether its sources are correct, separately for confirmed and heuristic detections. In addition, every analysis rule has a small example repository with a fixed expected output; every change to the analysis was checked against all of them, so that an improvement for one pattern cannot silently change the results for another. Results are reported in Section~\ref{sec:res-rq4}.
+
+% =============================================================================
+\section{Limitations}
+\label{sec:df-limitations}
+
+The analysis under-approximates data flows in known situations, so its counts are lower bounds: functions only called from outside the repository (such as public library functions) have no call sites to trace; state managed by frameworks or user interfaces (a LangGraph state, a Streamlit session) and data passed through callbacks, queues, or events are not followed; database writes are not tracked; effects inside helper functions called by a tool, and dispatch through \texttt{if}/\texttt{switch} on a tool name, are not detected; stores filled outside the repository cannot be linked to their writes; and repositories exceeding the memory or time limits are not analysed. It may over-approximate where heuristic sinks are not AI sinks (hence reported separately) and where identifiers such as session identifiers passed to a store are counted as written content. Finally, two source definitions are deliberately broad: files read from a non-fixed path count as \texttt{external}, and command-line arguments as \texttt{user} input.
+
+
+% #############################################################################
+% This is Chapter 7
+% !TEX root = ../main.tex
+% #############################################################################
+\providecommand{\pv}[1]{\textcolor{blue}{#1}} % provisional number: update from the final run
+\fancychapter{Discussion}
+% The following line allows to ref this chapter
+\label{chap:discussion}
+
+This chapter interprets the results of Chapter~\ref{chap:results}, discusses what they imply for developers and framework designers, states the threats to the validity of the study, and relates it to prior work.
+
+% =============================================================================
+\section{Interpretation}
+\label{sec:disc-interpretation}
+
+\paragraph{The instructions are protected; the context is not.} Developers largely keep what they \emph{tell} the model under their own control: agent instructions and system messages are mostly written as constants. The exposure lies in what the model is \emph{given to read}. Content from end users, web pages, databases, and tools reaches model calls in a large share of the applications, and in roughly a quarter of them the model reads content that no user typed. Because a model does not reliably distinguish instructions from data (Section~\ref{sec:surface}), a static system prompt alone does not protect these applications: the attack surface is the context, not the prompt.
+
+\paragraph{Tools are where exposure turns into action.} Tools play two roles in the results. They are the main channel through which external content enters an application---more often than any other sink type---and, in a smaller number of applications, they let the model act on the environment with arguments it chooses: running commands, touching files, sending requests, querying databases. The combination of both roles in the same application (\pv{15.6\%} of applications with tools) is the concrete shape of the attack chains described in Chapter~\ref{chap:back}: content read by one tool steers the model to misuse another.
+
+\paragraph{Memory poisoning is hard to see statically.} Almost half of the applications with stores write untrusted content into them, but complete write--read--model chains are rarely observable. The main reason is architectural: many applications read from stores that are filled by separate ingestion scripts or services, outside the repository or outside the code paths the analysis can connect. The low prevalence of complete chains should therefore not be read as evidence that memory poisoning is rare; it reflects that the preconditions are split across components that a single-repository analysis cannot join.
+
+\paragraph{Structure and data flow tell different stories.} The pattern-based analysis of Chapter~\ref{chap:implement} records whether an application \emph{has} a component, such as a store or a tool; the data-flow analysis records what \emph{reaches} it. The two views can diverge: an application may have a store that only ever receives developer-curated content, or tools whose effects operate on fixed paths. \todo{Compare the two analyses on the shared subset, e.g.\ how many applications flagged by the one-hop \texttt{unsanitized\_writes} heuristic also show untrusted store writes in the data-flow analysis, and vice versa.}
+
+% =============================================================================
+\section{Implications}
+\label{sec:disc-implications}
+
+For \emph{developers}, the results suggest where scrutiny pays off most: every tool that fetches outside content, and every tool whose parameters reach commands, files, or network requests. Keeping these capabilities in separate applications or agents, or placing a confirmation step between them, breaks the combination that makes indirect injection consequential. For \emph{framework designers}, the results show that much of the exposure arises inside patterns the frameworks themselves promote---tools that return raw web content, retrieval that feeds the context directly---which makes framework-level defaults, such as marking retrieved and tool content as untrusted, a lever with wide reach. For \emph{researchers}, the prevalence figures indicate which of the defenses reviewed in Chapter~\ref{chap:back}, such as information-flow control and tool-use validation, address the most common exposure in practice.
+
+% =============================================================================
+\section{Threats to Validity}
+\label{sec:disc-threats}
+
+\paragraph{Construct validity.} The study measures exposure, not exploitability. A risk pattern shows that the data flow an attack requires exists in the code; it does not show that sanitization is absent, that the model would follow injected instructions, or that the affected functionality is reachable in a deployment. Some source definitions are deliberately broad---files read from a non-fixed path count as external content, and command-line arguments as user input---which can overstate exposure in applications whose file reads are local.
+
+\paragraph{Internal validity.} The analyses are static and approximate. Recall of model-call detection is 57\% with confirmed rules and 81\% including heuristics (Section~\ref{sec:res-rq4}), and a share of inputs remains undetermined; for both reasons, prevalence figures are lower bounds. Heuristic detections may include false positives, which is why they are reported only as an upper bound. The known blind spots of the data-flow analysis are listed in Section~\ref{sec:df-limitations}. The application-versus-framework classification relies on LLM judges with low agreement (Section~\ref{sec:crawling}), mitigated by manual adjudication.
+
+\paragraph{External validity.} RADAR covers popular open-source applications on GitHub written in Python and JavaScript/TypeScript, collected at a single point in time (Section~\ref{sec:limitations}). Closed-source and enterprise agents, other languages, and less popular projects may differ. The data-flow results additionally refer to a subset of 381 of the 516 applications (Section~\ref{sec:dataflow-subset}).
+
+\paragraph{Reliability.} Both analyses, the dataset, and the per-repository results are released \todo{link}, and every finding records the file, line, and trace that produced it, so that individual results can be checked and the study repeated.
+
+% =============================================================================
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Attacks and taxonomies.} Prompt injection against LLM-integrated applications was demonstrated by Greshake et al.~\cite{greshake}, and subsequent work extended it to tools, memory, and multi-agent settings (Chapter~\ref{chap:back}). The OWASP Top 10 for LLM Applications~\cite{owasp} and MITRE ATLAS~\cite{mitre-atlas} catalogue these threats, and Kim et al.~\cite{kim2026sok} consolidate them into the attack vectors and risks that this thesis operationalizes.
+
+\paragraph{Benchmarks.} AgentDojo~\cite{agentdojo} and Agent Security Bench~\cite{asb} measure how often attacks succeed against agents in controlled environments. They answer how vulnerable agents are \emph{when} exposed; this thesis complements them by measuring how often real applications \emph{are} exposed.
+
+\paragraph{Defenses.} Information-flow control~\cite{debenedetti2025camel,costa2025fides}, guardrails~\cite{llamafirewall,xiang2024guardagent}, and privilege control~\cite{shi2025progent} target precisely the data flows measured here; our results indicate where in real applications such mechanisms would apply.
+
+\paragraph{Empirical studies of LLM applications.} Closest to our approach, LLMSmith~\cite{liu2024llmsmith} uses static analysis to find call chains from LLM output to code execution in LLM-integrated frameworks and confirms the resulting vulnerabilities in applications by exploitation. It targets one consequence, remote code execution, in depth; we measure a broader set of attack preconditions across a whole corpus without exploitation. Other studies examine the LLM application ecosystem from outside the code: Hou et al.~\cite{hou2024llmappstores} analyse hundreds of thousands of apps in LLM app stores for abusive, malicious, and vulnerable behaviour, and Shifat et al.~\cite{shifat2026advisories} study how LLM-related vulnerabilities are reported in GitHub security advisories. To our knowledge, no prior work measures how often untrusted data reaches the models, tools, and stores of open-source agentic applications at the level of their source code.
+
+
+% -----------------------------------------------------------------------------
+% Former detector table of the pattern-based analysis (Chapter 4), kept for reference.
+% \begin{table*}[p]
+% \centering
+% \renewcommand{\arraystretch}{1.25}
+% \setlength{\tabcolsep}{5pt}
+% \scriptsize
+% \caption{Operationalization of each metadata field into a static-detection
+% signal. ``Type'' is the field's value domain; ``Bears on'' links the signal
+% to the risks (R1--R7) of Section~\ref{sec:overview} or to a defence class.
+% Framework and API names are representative, not exhaustive.}
+% \label{tab:detectors}
+% \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.15\textwidth}
+%                   >{\raggedright\arraybackslash}p{0.05\textwidth}
+%                   >{\raggedright\arraybackslash}p{0.60\textwidth}
+%                   >{\raggedright\arraybackslash}p{0.09\textwidth}@{}}
+% \toprule
+% \textbf{Field} & \textbf{Type} & \textbf{Detection signal} & \textbf{Bears on} \\
+% \midrule
+% \multicolumn{4}{@{}l}{\emph{Structure}} \\
+% \texttt{n\_agents} & int &
+%   AST call sites whose callee resolves to a known agent constructor in the
+%   framework allow-list (e.g.\ \texttt{AssistantAgent},
+%   \texttt{create\_react\_agent}, CrewAI \texttt{Agent}, OpenAI Agents SDK
+%   \texttt{Agent}); de-duplicated by binding. & R1 \\
+% \rowcolor{rowgray}
+% \texttt{n\_tools} & int &
+%   Tool registrations: \texttt{@tool}/\texttt{@function\_tool} decorators,
+%   \texttt{Tool(...)}/\texttt{FunctionTool(...)} constructors,
+%   \texttt{@mcp.tool()}, and entries of \texttt{tools=[...]} arguments. & R1 \\
+% \texttt{has\_rag} & bool &
+%   Instantiation of a vector-store / retriever client (Chroma, Pinecone,
+%   Weaviate, Qdrant, FAISS, PGVector, LlamaIndex \texttt{VectorStoreIndex}) or
+%   a retriever wired into a chain. & R1, R3 \\
+% \rowcolor{rowgray}
+% \texttt{has\_agent\_handoffs} & bool &
+%   Delegation primitives: \texttt{handoffs=[...]} (OpenAI Agents SDK),
+%   LangGraph inter-agent edges, AutoGen \texttt{GroupChat}/\texttt{initiate\_chat},
+%   CrewAI hierarchical delegation. & R1, R3 \\
+% \addlinespace[3pt]
+% \multicolumn{4}{@{}l}{\emph{Memory and retrieval}} \\
+% \texttt{shared\_across\_agents} & bool &
+%   Def--use tracking of each store/memory binding; true when the same object
+%   is passed to ${\ge}\,2$ distinct agent constructors. & R3 \\
+% \rowcolor{rowgray}
+% \texttt{rag\_writers} & list &
+%   Call sites of write/ingest APIs (\texttt{.add}, \texttt{.upsert},
+%   \texttt{.add\_documents}, \texttt{index.insert}) mapped to the enclosing
+%   agent via the call graph. & R3, R6 \\
+% \texttt{rag\_readers} & list &
+%   Call sites of query/retrieve APIs (\texttt{.query},
+%   \texttt{.similarity\_search},
+%   \texttt{.as\_retriever().get\_relevant\_documents}) mapped to the enclosing
+%   agent. & R3 \\
+% \rowcolor{rowgray}
+% \texttt{unsanitized\_writes} & bool &
+%   Coarse taint check: an untrusted source reaches a write sink without
+%   passing a validator or schema (\texttt{pydantic} model, allow-list,
+%   sanitizer). & R3, R6 \\
+% \texttt{rag\_influences\_actions} & bool &
+%   Data flow from a retrieval read to a \emph{control} site (tool-selection
+%   argument, planner/prompt input) rather than only the returned response. &
+%   R2, R3 \\
+% \addlinespace[3pt]
+% \multicolumn{4}{@{}l}{\emph{Tool access and privilege}} \\
+% \texttt{tool\_categories} & set &
+%   Per tool, classify the call expressions in its body against capability
+%   signatures: \emph{file system} (\texttt{open}, \texttt{os}, \texttt{fs},
+%   \texttt{pathlib}), \emph{network} (\texttt{requests}, \texttt{httpx},
+%   \texttt{fetch}, \texttt{axios}), \emph{execution} (\texttt{subprocess},
+%   \texttt{eval}, \texttt{exec}, \texttt{child\_process}),
+%   \emph{authentication} (auth SDKs, \texttt{Authorization} headers),
+%   \emph{data query} (DB drivers, ORM, raw SQL). & R1, R6 \\
+% \rowcolor{rowgray}
+% \texttt{authenticated\_tools} & list &
+%   Tools whose body reads credentials/tokens
+%   (\texttt{os.environ[...\_KEY]}, secret managers) or constructs an
+%   authenticated client. & R5, R6 \\
+% \texttt{execution\_capable} & bool &
+%   \emph{Derived}: true if any tool is in the \emph{execution} category or the
+%   agent is configured with a code-execution tool (\texttt{PythonREPLTool},
+%   AutoGen executor, E2B sandbox). & R6 \\
+% \rowcolor{rowgray}
+% \texttt{data\_sensitive\_tools} & list &
+%   Tools reading user files, secrets, or PII stores: file reads under
+%   home/user paths, secret access, DB reads of user tables. & R5 \\
+% \addlinespace[3pt]
+% \multicolumn{4}{@{}l}{\emph{Input and output handling}} \\
+% \texttt{external\_input\_sources} & set &
+%   Source-API signatures: HTTP/web fetches, browser page content, file reads,
+%   tool outputs returned to the model, RAG retrieval, user messages, MCP
+%   responses. & R1 \\
+% \rowcolor{rowgray}
+% \texttt{untrusted\_external\_inputs} & set &
+%   Subset of the above flagged untrusted by the threat model (web, retrieved,
+%   third-party-tool, and MCP content); the direct user prompt is classified
+%   per the chosen adversary model. & R1, R2 \\
+% \texttt{output\_destinations} & set &
+%   Sink-API signatures (inverse of sources): tool calls, file writes, network
+%   requests, shell, database writes, returned response. & R6 \\
+% \rowcolor{rowgray}
+% \texttt{has\_output\_guardrails} & bool &
+%   A validator or approval gate on the output${\to}$sink path:
+%   \texttt{output\_guardrails=} (OpenAI Agents SDK), NeMo Guardrails,
+%   LlamaFirewall, Guardrails AI \texttt{Guard}, tool-argument schema
+%   validation, or a human-approval step. & defence \\
+% \bottomrule
+% \end{tabular}
+% \end{table*}
+
+% \begin{table*}[p]
+% \centering
+% \renewcommand{\arraystretch}{1.25}
+% \setlength{\tabcolsep}{5pt}
+% \scriptsize
+% \caption{Operationalization of each metadata field into a static-detection
+% signal. ``Type'' is the field's value domain; ``Bears on'' links the signal
+% to the risks (R1--R7) of Section~\ref{sec:overview} or to a defence class.
+% Framework and API names are representative, not exhaustive.}
+% \label{tab:detectors}
+% \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.15\textwidth}
+%                   >{\raggedright\arraybackslash}p{0.05\textwidth}
+%                   >{\raggedright\arraybackslash}p{0.60\textwidth}
+%                   >{\raggedright\arraybackslash}p{0.09\textwidth}@{}}
+% \toprule
+% \textbf{Field} & \textbf{Type} & \textbf{Detection signal} & \textbf{Bears on} \\
+% \midrule
+% \multicolumn{4}{@{}l}{\emph{Structure}} \\
+% \texttt{n\_agents} & int &
+%   AST call sites whose callee resolves to a known agent constructor in the
+%   framework allow-list (e.g.\ \texttt{AssistantAgent},
+%   \texttt{create\_react\_agent}, CrewAI \texttt{Agent}, OpenAI Agents SDK
+%   \texttt{Agent}); de-duplicated by binding. & R1 \\
+% \rowcolor{rowgray}
+% \texttt{n\_tools} & int &
+%   Tool registrations: \texttt{@tool}/\texttt{@function\_tool} decorators,
+%   \texttt{Tool(...)}/\texttt{FunctionTool(...)} constructors,
+%   \texttt{@mcp.tool()}, and entries of \texttt{tools=[...]} arguments. & R1 \\
+% \texttt{has\_rag} & bool &
+%   Instantiation of a vector-store / retriever client (Chroma, Pinecone,
+%   Weaviate, Qdrant, FAISS, PGVector, LlamaIndex \texttt{VectorStoreIndex}) or
+%   a retriever wired into a chain. & R1, R3 \\
+% \rowcolor{rowgray}
+% \texttt{has\_agent\_handoffs} & bool &
+%   Delegation primitives: \texttt{handoffs=[...]} (OpenAI Agents SDK),
+%   LangGraph inter-agent edges, AutoGen \texttt{GroupChat}/\texttt{initiate\_chat},
+%   CrewAI hierarchical delegation. & R1, R3 \\
+% \addlinespace[3pt]
+% \multicolumn{4}{@{}l}{\emph{Memory and retrieval}} \\
+% \texttt{shared\_across\_agents} & bool &
+%   Def--use tracking of each store/memory binding; true when the same object
+%   is passed to ${\ge}\,2$ distinct agent constructors. & R3 \\
+% \rowcolor{rowgray}
+% \texttt{rag\_writers} & list &
+%   Call sites of write/ingest APIs (\texttt{.add}, \texttt{.upsert},
+%   \texttt{.add\_documents}, \texttt{index.insert}) mapped to the enclosing
+%   agent via the call graph. & R3, R6 \\
+% \texttt{rag\_readers} & list &
+%   Call sites of query/retrieve APIs (\texttt{.query},
+%   \texttt{.similarity\_search},
+%   \texttt{.as\_retriever().get\_relevant\_documents}) mapped to the enclosing
+%   agent. & R3 \\
+% \rowcolor{rowgray}
+% \texttt{unsanitized\_writes} & bool &
+%   Coarse taint check: an untrusted source reaches a write sink without
+%   passing a validator or schema (\texttt{pydantic} model, allow-list,
+%   sanitizer). & R3, R6 \\
+% \texttt{rag\_influences\_actions} & bool &
+%   Data flow from a retrieval read to a \emph{control} site (tool-selection
+%   argument, planner/prompt input) rather than only the returned response. &
+%   R2, R3 \\
+% \addlinespace[3pt]
+% \multicolumn{4}{@{}l}{\emph{Tool access and privilege}} \\
+% \texttt{tool\_categories} & set &
+%   Per tool, classify the call expressions in its body against capability
+%   signatures: \emph{file system} (\texttt{open}, \texttt{os}, \texttt{fs},
+%   \texttt{pathlib}), \emph{network} (\texttt{requests}, \texttt{httpx},
+%   \texttt{fetch}, \texttt{axios}), \emph{execution} (\texttt{subprocess},
+%   \texttt{eval}, \texttt{exec}, \texttt{child\_process}),
+%   \emph{authentication} (auth SDKs, \texttt{Authorization} headers),
+%   \emph{data query} (DB drivers, ORM, raw SQL). & R1, R6 \\
+% \rowcolor{rowgray}
+% \texttt{authenticated\_tools} & list &
+%   Tools whose body reads credentials/tokens
+%   (\texttt{os.environ[...\_KEY]}, secret managers) or constructs an
+%   authenticated client. & R5, R6 \\
+% \texttt{execution\_capable} & bool &
+%   \emph{Derived}: true if any tool is in the \emph{execution} category or the
+%   agent is configured with a code-execution tool (\texttt{PythonREPLTool},
+%   AutoGen executor, E2B sandbox). & R6 \\
+% \rowcolor{rowgray}
+% \texttt{data\_sensitive\_tools} & list &
+%   Tools reading user files, secrets, or PII stores: file reads under
+%   home/user paths, secret access, DB reads of user tables. & R5 \\
+% \addlinespace[3pt]
+% \multicolumn{4}{@{}l}{\emph{Input and output handling}} \\
+% \texttt{external\_input\_sources} & set &
+%   Source-API signatures: HTTP/web fetches, browser page content, file reads,
+%   tool outputs returned to the model, RAG retrieval, user messages, MCP
+%   responses. & R1 \\
+% \rowcolor{rowgray}
+% \texttt{untrusted\_external\_inputs} & set &
+%   Subset of the above flagged untrusted by the threat model (web, retrieved,
+%   third-party-tool, and MCP content); the direct user prompt is classified
+%   per the chosen adversary model. & R1, R2 \\
+% \texttt{output\_destinations} & set &
+%   Sink-API signatures (inverse of sources): tool calls, file writes, network
+%   requests, shell, database writes, returned response. & R6 \\
+% \rowcolor{rowgray}
+% \texttt{has\_output\_guardrails} & bool &
+%   A validator or approval gate on the output${\to}$sink path:
+%   \texttt{output\_guardrails=} (OpenAI Agents SDK), NeMo Guardrails,
+%   LlamaFirewall, Guardrails AI \texttt{Guard}, tool-argument schema
+%   validation, or a human-approval step. & defence \\
+% \bottomrule
+% \end{tabular}
+% \end{table*}
